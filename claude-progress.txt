@@ -1618,3 +1618,102 @@ Created `SketchFlowAccountAppService` in `/src/SketchFlow.Application/Account/`:
 - Browser automation working
 - All services operational
 
+
+---
+
+## Session - 2026-01-27 (Regression Testing Feature #9)
+
+### Context
+- Assigned Feature #9: "User can register with email and password"
+- Description: Complete email/password registration flow works end-to-end
+- Category: D. Workflow Completeness
+- Status: Previously PASSING - regression testing
+
+### Verification Results
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Navigate to registration page | Registration page loads | PASS |
+| 2. Enter unique email address | Email field accepts input | PASS - regtest9_v2@example.com |
+| 3. Enter valid password (min 8 chars) | Password field accepts input | PASS - TestPassword123\! |
+| 4. Click submit/register button | Form submits | PASS |
+| 5. Wait for API response | API responds | PASS |
+| 6. Verify success message or redirect | Redirect to dashboard | PASS - Redirected to /dashboard |
+| 7. Verify user account was created | User logged in | PASS - Username visible in header |
+
+### Test Details
+- Registered new test user: regtest9_user_v2 with email regtest9_v2@example.com
+- Registration redirected to dashboard after successful account creation
+- User automatically logged in after registration
+- Email verification banner displayed (expected behavior)
+- Dashboard empty state shown for new user (no boards yet)
+
+### Console Errors
+- Only XSRF-TOKEN cookie warning (development environment issue, not a regression)
+
+### Screenshots
+- feature9-registration-form-filled.png - Form filled with test data
+- feature9-registration-success.png - Dashboard showing logged in user
+
+### Feature Result
+- **Feature #9: STILL PASSING** - No regression detected
+- All verification steps completed successfully
+- Registration flow works correctly end-to-end
+
+### Current Progress
+- 14/273 features passing (5.1%)
+- User registration flow verified and working correctly
+
+---
+
+## Session - 2026-01-27 (Feature #44 - Dashboard search case-insensitive)
+
+### Context
+- Assigned Feature #44: "Dashboard search is case-insensitive"
+- Description: Search works regardless of case
+- Category: L. Search & Filter
+
+### Implementation Notes
+The case-insensitive search was already implemented in the dashboard component:
+- `dashboard.component.ts` lines 77-85 use `.toLowerCase()` for both search query and board name
+- Backend `BoardAppService.cs` lines 30-34 use `.ToLowerInvariant()` for the filter
+
+### Verification Steps Completed
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Create board 'MyTestBoard' | Board created | PASS - Created via New Board dialog |
+| 2. Navigate to dashboard | Dashboard loads with board | PASS - Board visible |
+| 3. Type 'mytestboard' (lowercase) in search | Board should appear | PASS - "MyTestBoard" displayed |
+| 4. Verify 'MyTestBoard' is displayed | Board matches | PASS - Verified in snapshot |
+| 5. Clear and type 'MYTESTBOARD' (uppercase) | Board should appear | PASS - "MyTestBoard" displayed |
+| 6. Verify 'MyTestBoard' is displayed | Board matches | PASS - Verified in snapshot |
+
+### Console Errors
+- No JavaScript errors detected
+
+### Screenshots Captured
+- feature44-board-created.png - Dashboard with "MyTestBoard" visible
+- feature44-search-lowercase.png - Search with "mytestboard" showing "MyTestBoard"
+- feature44-search-uppercase.png - Search with "MYTESTBOARD" showing "MyTestBoard"
+
+### Technical Details
+- Frontend filter (Angular): `board.name.toLowerCase().includes(query.toLowerCase())`
+- Backend filter (C#): `b.Name.ToLower().Contains(filter.ToLowerInvariant())`
+- Both implement case-insensitive search correctly
+
+### Feature Result
+- **Feature #44: PASSING**
+- All verification steps completed successfully
+- Case-insensitive search works for both lowercase and uppercase queries
+
+### Current Progress
+- **15/273 features passing** (~5.5%)
+- Dashboard search functionality verified
+
+### Environment Status
+- Backend running on http://localhost:44326
+- Frontend running on http://localhost:4200
+- Browser automation working
+- All services operational
+
