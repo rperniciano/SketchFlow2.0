@@ -3245,3 +3245,103 @@ Note: These errors are related to backend persistence, not the pen tool function
 - Feature #64 completed and verified
 - Pen tool freehand drawing working as expected
 
+---
+
+## Session - 2026-01-27 (Testing Feature #47 - Boards sorted by last modified)
+
+### Context
+- Assigned Feature #47: "Boards sorted by last modified (most recent first)"
+- Description: Dashboard sorts boards with most recently modified first
+- Category: K. Default & Reset
+- Status: Already passing - regression test
+
+### What Was Verified
+
+1. Created board 'First' via New Board button
+2. Waited and created board 'Second'
+3. Verified 'Second' appeared before 'First' (both at 2:32 PM, Second newer)
+4. Renamed 'First' to 'First_Modified' (triggers lastModified update to 2:34 PM)
+5. Refreshed dashboard
+6. Verified 'First_Modified' now appears first (before Second)
+
+### Verification Steps Results
+
+| Step | Expected | Result |
+|------|----------|--------|
+| Create board 'First' | Board created | PASS |
+| Wait 1 second | - | PASS |
+| Create board 'Second' | Board created | PASS |
+| Navigate to dashboard | Dashboard displayed | PASS |
+| Verify 'Second' before 'First' | Second before First | PASS |
+| Modify 'First' board | Renamed to First_Modified | PASS |
+| Return to dashboard | Dashboard displayed | PASS |
+| Verify 'First' now first | First_Modified now first | PASS |
+
+### Console Errors
+- None
+
+### Screenshots Captured
+- feature47-first-board-canvas.png - Canvas view of First board
+- feature47-first-now-first-after-modification.png - Dashboard showing First_Modified in first position
+
+### Feature Result
+- **Feature #47: PASSING (no regression)**
+- All verification steps completed successfully
+- Boards correctly sorted by lastModified (most recent first)
+
+[Testing] Feature #47 verified - still passing. Boards correctly sorted by last modified date.
+
+
+
+---
+
+## Session - 2026-01-27 (Feature #61 - Canvas selection tool selects single element)
+
+### Context
+- Assigned Feature #61: "Canvas selection tool selects single element"
+- Description: Selection tool (V) can select individual elements
+- Category: D. Workflow Completeness
+
+### What Was Accomplished
+
+1. **Verified Canvas Implementation**:
+   - Canvas component has Fabric.js integration
+   - Selection tool (V) is the default tool
+   - Demo elements loaded when backend API unavailable
+
+2. **Full End-to-End Verification with Browser Automation**:
+   - Logged in as admin user
+   - Navigated to canvas page via board card click
+   - Canvas loaded with 4 demo elements (rectangle, circle, text, triangle)
+   - Clicked on blue rectangle - selection handles appeared
+   - Verified status bar shows "Selected: 1 element"
+   - Pressed Escape to deselect - handles disappeared
+   - Clicked on green circle - selection handles appeared on circle
+   - Tested keyboard shortcut P then V - tool switches correctly
+
+### Feature #61 Verification Checklist
+
+| Verification | Expected | Result |
+|--------------|----------|--------|
+| Open canvas with elements | Canvas displays elements | PASS |
+| Press V or select Selection tool | Tool is active | PASS |
+| Click on an element | Element gets selected | PASS |
+| Verify element shows selection handles | 8 resize + 1 rotation handle | PASS |
+| Verify element is highlighted | Border around element | PASS |
+
+### Screenshots Captured
+- feature61-canvas-initial.png - Canvas with toolbar and demo elements
+- feature61-element-selected.png - Blue rectangle with selection handles
+- feature61-circle-selected.png - Green circle selected
+
+### Git Commit
+- Commit 88090fe: "feat: implement canvas selection tool with Fabric.js - Feature #61"
+
+### Feature Result
+- **Feature #61: PASSING**
+- All verification completed successfully
+- Canvas selection tool works correctly for single element selection
+
+### Current Progress
+- **34/273 features passing** (~12.5%)
+
