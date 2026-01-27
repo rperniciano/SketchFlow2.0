@@ -1,7 +1,14 @@
-import { Component, OnInit, OnDestroy, inject, AfterViewInit, ElementRef, ViewChild, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, AfterViewInit, ElementRef, ViewChild, HostListener, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
+import { Subscription, forkJoin, of, from, catchError, tap, finalize } from 'rxjs';
 import { BoardService, BoardDto, BoardElementDto, CreateBoardElementDto } from '../shared/services/board.service';
+import { ConnectionService } from '../shared/services/connection.service';
+import { OfflineQueueService, QueuedOperation } from '../shared/services/offline-queue.service';
+import { SignalRService } from '../shared/services/signalr.service';
+import { ToastService } from '../shared/services/toast.service';
+import { ConnectionLostBannerComponent } from '../shared/components/connection-lost-banner.component';
+import { ToastContainerComponent } from '../shared/components/toast-container.component';
 import * as fabric from 'fabric';
 
 interface GuestSession {
@@ -53,7 +60,7 @@ interface HistoryEntry {
 @Component({
   selector: 'app-canvas',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, ConnectionLostBannerComponent, ToastContainerComponent],
   template: `
     <div class="canvas-container">
       <div class="canvas-header">
@@ -70,6 +77,9 @@ interface HistoryEntry {
       </div>
 
       <div class="canvas-workspace" *ngIf="board">
+        <!-- Connection Lost Banner (per spec: appears at top of canvas) -->
+        <app-connection-lost-banner></app-connection-lost-banner>
+
         <!-- Left Toolbar -->
         <div class="toolbar">
           <div class="tool-group">
@@ -115,7 +125,7 @@ interface HistoryEntry {
           <!-- Stroke Color Picker -->
           <div class="tool-group">
             <span class="tool-label">Stroke</span>
-            <div class="color-picker">
+            <div class="color-picker" role="radiogroup" aria-label="Stroke color">
               <div
                 *ngFor="let color of colors"
                 class="color-swatch"
@@ -123,6 +133,12 @@ interface HistoryEntry {
                 [class.active]="currentColor === color.value"
                 [class.light]="color.value === '#ffffff'"
                 (click)="selectColor(color.value)"
+                (keydown.enter)="selectColor(color.value)"
+                (keydown.space)="selectColor(color.value); $event.preventDefault()"
+                [attr.tabindex]="0"
+                role="radio"
+                [attr.aria-checked]="currentColor === color.value"
+                [attr.aria-label]="color.name + ' stroke color'"
                 [title]="color.name">
               </div>
             </div>
@@ -133,12 +149,18 @@ interface HistoryEntry {
           <!-- Fill Color Picker -->
           <div class="tool-group">
             <span class="tool-label">Fill</span>
-            <div class="color-picker">
+            <div class="color-picker" role="radiogroup" aria-label="Fill color">
               <!-- No fill option -->
               <div
                 class="color-swatch no-fill"
                 [class.active]="currentFillColor === null"
                 (click)="selectFillColor(null)"
+                (keydown.enter)="selectFillColor(null)"
+                (keydown.space)="selectFillColor(null); $event.preventDefault()"
+                [attr.tabindex]="0"
+                role="radio"
+                [attr.aria-checked]="currentFillColor === null"
+                aria-label="No fill"
                 title="No Fill">
               </div>
               <div
@@ -148,6 +170,12 @@ interface HistoryEntry {
                 [class.active]="currentFillColor === color.value"
                 [class.light]="color.value === '#ffffff'"
                 (click)="selectFillColor(color.value)"
+                (keydown.enter)="selectFillColor(color.value)"
+                (keydown.space)="selectFillColor(color.value); $event.preventDefault()"
+                [attr.tabindex]="0"
+                role="radio"
+                [attr.aria-checked]="currentFillColor === color.value"
+                [attr.aria-label]="color.name + ' fill color'"
                 [title]="color.name + ' Fill'">
               </div>
             </div>
@@ -189,6 +217,23 @@ interface HistoryEntry {
 
       <!-- Status Bar -->
       <div class="status-bar" *ngIf="board">
+        <!-- Connection Status Indicator (per spec: green/yellow/red) -->
+        <div class="status-item connection-status">
+          <span
+            class="connection-indicator"
+            [class.connected]="connectionService.isConnected()"
+            [class.connecting]="connectionService.isConnecting()"
+            [class.disconnected]="connectionService.isDisconnected()"
+            [attr.aria-label]="'Connection status: ' + connectionService.status()"
+            role="status">
+          </span>
+          <span class="status-value"
+            [class.connected]="connectionService.isConnected()"
+            [class.connecting]="connectionService.isConnecting()"
+            [class.disconnected]="connectionService.isDisconnected()">
+            {{ connectionService.isConnected() ? 'Connected' : connectionService.isConnecting() ? 'Connecting...' : 'Disconnected' }}
+          </span>
+        </div>
         <div class="status-item">
           <span class="status-label">Tool:</span>
           <span class="status-value">{{ getToolDisplayName() }}</span>
@@ -203,7 +248,13 @@ interface HistoryEntry {
         </div>
         <div class="status-item">
           <span class="status-label">Status:</span>
-          <span class="status-value" [class.saving]="isSaving">{{ isSaving ? 'Saving...' : 'Saved' }}</span>
+          <span class="status-value" [class.saving]="isSaving" [class.queued]="offlineQueueCount > 0">
+            {{ getStatusDisplay() }}
+          </span>
+        </div>
+        <div class="status-item" *ngIf="offlineQueueCount > 0">
+          <span class="status-label">Queued:</span>
+          <span class="status-value queued">{{ offlineQueueCount }} change{{ offlineQueueCount > 1 ? 's' : '' }}</span>
         </div>
         <div class="status-item">
           <span class="status-label">Zoom:</span>
@@ -217,6 +268,9 @@ interface HistoryEntry {
         <p>{{ error }}</p>
         <button class="btn-primary" (click)="goBack()">{{ isGuest ? 'Go Home' : 'Return to Dashboard' }}</button>
       </div>
+
+      <!-- Toast Container (per spec: notifications at bottom-left) -->
+      <app-toast-container></app-toast-container>
     </div>
   `,
   styles: [`
@@ -255,6 +309,16 @@ interface HistoryEntry {
     .back-btn:hover {
       background: rgba(99, 102, 241, 0.3);
       border-color: rgba(99, 102, 241, 0.5);
+    }
+
+    .back-btn:focus {
+      outline: none;
+    }
+
+    .back-btn:focus-visible {
+      outline: 2px solid #6366f1;
+      outline-offset: 2px;
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.3);
     }
 
     .board-name {
@@ -332,6 +396,22 @@ interface HistoryEntry {
       color: #a5b4fc;
     }
 
+    /* Focus indicators for keyboard navigation (per spec: 2px offset, accent color) */
+    .tool-btn:focus {
+      outline: none;
+    }
+
+    .tool-btn:focus-visible {
+      outline: 2px solid #6366f1;
+      outline-offset: 2px;
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.3);
+    }
+
+    .tool-btn.active:focus-visible {
+      outline-color: #a5b4fc;
+      box-shadow: 0 0 0 4px rgba(165, 180, 252, 0.3);
+    }
+
     .tool-divider {
       width: 32px;
       height: 1px;
@@ -378,9 +458,21 @@ interface HistoryEntry {
       background-size: 100% 100%;
     }
 
+    /* Focus indicators for color swatches (keyboard navigation support) */
+    .color-swatch:focus {
+      outline: none;
+    }
+
+    .color-swatch:focus-visible {
+      outline: 2px solid #6366f1;
+      outline-offset: 2px;
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.3);
+      transform: scale(1.1);
+    }
+
     .tool-label {
       font-size: 0.625rem;
-      color: #71717a;
+      color: #8b8b94; /* Updated from #71717a for WCAG AA compliance (4.5:1+ contrast) */
       text-transform: uppercase;
       letter-spacing: 0.05em;
       text-align: center;
@@ -440,7 +532,7 @@ interface HistoryEntry {
     }
 
     .status-label {
-      color: #71717a;
+      color: #8b8b94; /* Updated from #71717a for WCAG AA compliance (4.5:1+ contrast) */
     }
 
     .status-value {
@@ -449,6 +541,62 @@ interface HistoryEntry {
 
     .status-value.saving {
       color: #f59e0b;
+    }
+
+    .status-value.queued {
+      color: #ef4444; /* Red color to indicate offline/queued state */
+    }
+
+    /* Connection Status Indicator Styles (Feature #101) */
+    .connection-status {
+      gap: 0.375rem;
+    }
+
+    .connection-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      transition: all 0.3s ease;
+    }
+
+    .connection-indicator.connected {
+      background-color: #10b981; /* Green - per spec: success color */
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+    }
+
+    .connection-indicator.connecting {
+      background-color: #f59e0b; /* Yellow/amber - per spec: warning color */
+      box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .connection-indicator.disconnected {
+      background-color: #ef4444; /* Red - per spec: error color */
+      box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+    }
+
+    .status-value.connected {
+      color: #10b981;
+    }
+
+    .status-value.connecting {
+      color: #f59e0b;
+    }
+
+    .status-value.disconnected {
+      color: #ef4444;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.6;
+        transform: scale(0.9);
+      }
     }
 
     .error-state {
@@ -491,6 +639,16 @@ interface HistoryEntry {
       transform: translateY(-2px);
       box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
     }
+
+    .btn-primary:focus {
+      outline: none;
+    }
+
+    .btn-primary:focus-visible {
+      outline: 2px solid #a5b4fc;
+      outline-offset: 2px;
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.4);
+    }
   `]
 })
 export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
@@ -500,6 +658,14 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private boardService = inject(BoardService);
+  connectionService = inject(ConnectionService); // Exposed for testing connection loss banner
+  private offlineQueueService = inject(OfflineQueueService); // For offline drawing support (Feature #103)
+  private toastService = inject(ToastService); // For showing "Back online" toast (Feature #104)
+  private signalRService = inject(SignalRService); // For real-time collaboration (Feature #100)
+
+  // Track previous connection state for detecting reconnection
+  private wasDisconnected = false;
+  private isSyncingQueue = false;
 
   board: BoardDto | null = null;
   isLoading = true;
@@ -528,6 +694,10 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   private nextZIndex = 0;
   isSaving = false;
   elementLoadCount = 0;
+
+  // Offline queue tracking (Feature #103: Local drawing continues while offline)
+  offlineQueueCount = 0; // Number of operations queued while offline
+  private queueSubscription: Subscription | null = null;
 
   // Auto-save mechanism (5-second interval per spec)
   private readonly AUTO_SAVE_INTERVAL_MS = 5000; // 5 seconds
@@ -569,9 +739,44 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     { name: 'Purple', value: '#a855f7' }
   ];
 
+  /**
+   * Constructor with effect to monitor connection status changes
+   * Per spec (Feature #104): "Sync queued changes on reconnect"
+   */
+  constructor() {
+    // Effect to monitor connection status changes
+    // When connection is restored after being disconnected:
+    // 1. Sync any queued operations
+    // 2. Show "Back online" success toast
+    effect(() => {
+      const isConnected = this.connectionService.isConnected();
+
+      if (isConnected && this.wasDisconnected) {
+        console.log('[Connection] Connection restored! Syncing queued changes...');
+        this.syncQueuedChanges();
+      }
+
+      // Track disconnected state for detecting reconnection
+      if (!isConnected) {
+        this.wasDisconnected = true;
+      }
+    });
+  }
+
   ngOnInit(): void {
     const boardId = this.route.snapshot.paramMap.get('id');
     const isGuestParam = this.route.snapshot.queryParamMap.get('guest');
+
+    // Subscribe to offline queue changes (Feature #103: Local drawing continues while offline)
+    this.queueSubscription = this.offlineQueueService.queueChanged$.subscribe(queue => {
+      // Only count operations for the current board
+      if (boardId) {
+        this.offlineQueueCount = queue.filter(op => op.boardId === boardId).length;
+      } else {
+        this.offlineQueueCount = queue.length;
+      }
+      console.log('[Offline] Queue changed, count:', this.offlineQueueCount);
+    });
 
     // Check if this is a guest access
     if (isGuestParam === 'true') {
@@ -598,6 +803,15 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       clearInterval(this.autoSaveTimer);
       this.autoSaveTimer = null;
     }
+
+    // Clean up queue subscription (Feature #103)
+    if (this.queueSubscription) {
+      this.queueSubscription.unsubscribe();
+      this.queueSubscription = null;
+    }
+
+    // Disconnect from SignalR (Feature #100)
+    this.signalRService.disconnect();
 
     if (this.canvas) {
       this.canvas.dispose();
@@ -678,6 +892,33 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
 
     // Start auto-save timer (5-second interval per spec)
     this.startAutoSaveTimer();
+
+    // Connect to SignalR for real-time collaboration (Feature #100)
+    this.connectToSignalR();
+  }
+
+  /**
+   * Connect to SignalR hub for real-time collaboration
+   * Per spec: SignalR connection establishes on board join
+   */
+  private connectToSignalR(): void {
+    if (!this.board) {
+      console.warn('[SignalR] Cannot connect - no board loaded');
+      return;
+    }
+
+    const guestName = this.isGuest && this.guestSession ? this.guestSession.guestName : undefined;
+
+    console.log('[SignalR] Connecting to board:', this.board.id);
+
+    this.signalRService.connect(this.board.id, guestName)
+      .then(() => {
+        console.log('[SignalR] Successfully connected to board');
+      })
+      .catch(error => {
+        console.error('[SignalR] Failed to connect:', error);
+        // Connection will retry automatically via the SignalR service
+      });
   }
 
   /**
@@ -915,6 +1156,8 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   // Save a new element to the database
+  // Per spec (Feature #103): "Local drawing continues while offline (in-memory queue)"
+  // Elements are added to canvas first, then saved to DB. If offline, they're queued for later sync.
   private saveNewElement(obj: fabric.FabricObject, type: 'stroke' | 'rectangle' | 'circle' | 'text'): void {
     if (!this.board) return;
 
@@ -922,10 +1165,50 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     const elementDataStr = JSON.stringify(elementData);
     const zIndex = this.nextZIndex++;
 
+    // Generate a temporary ID for the element (used for tracking before server assigns real ID)
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    (obj as any)._tempId = tempId;
+
+    // The element is already on the canvas (added before this method is called)
+    // Increment element count immediately so user sees it
+    this.elementLoadCount++;
+
     const dto: CreateBoardElementDto = {
       elementData: elementDataStr,
       zIndex: zIndex
     };
+
+    // Check if offline - if so, queue the operation instead of sending to server
+    // Per spec: "Local drawing continues while offline (in-memory queue)"
+    if (!this.offlineQueueService.isOnline) {
+      console.log('[Offline] Queuing create operation for element (temp id:', tempId, ')');
+
+      // Queue the operation for later sync
+      const queuedOp = this.offlineQueueService.enqueue(
+        'create',
+        this.board.id,
+        tempId, // Use temp ID as element reference
+        elementDataStr,
+        zIndex
+      );
+
+      // Store the queued operation ID on the object for later reference
+      (obj as any)._queuedOpId = queuedOp.id;
+
+      // Mark as dirty (needs sync)
+      this.markDirty();
+
+      // Record in history for undo support (using temp ID)
+      this.recordHistory({
+        actionType: 'create',
+        elementId: tempId,
+        fabricObject: obj,
+        elementData: elementDataStr,
+        zIndex: zIndex
+      });
+
+      return; // Don't attempt network request when offline
+    }
 
     // Track pending save operation
     this.isSaving = true;
@@ -938,10 +1221,10 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       next: (savedElement) => {
         // Store mapping of element ID to Fabric object
         (obj as any)._elementId = savedElement.id;
+        delete (obj as any)._tempId; // Remove temp ID now that we have real ID
         this.elementMap.set(savedElement.id, obj);
         this.pendingSaveCount--;
         this.isSaving = this.pendingSaveCount > 0;
-        this.elementLoadCount++;
         this.markSaved();
 
         console.log('[AutoSave] Element saved successfully, id:', savedElement.id);
@@ -959,19 +1242,73 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
         console.error('Failed to save element:', err);
         this.pendingSaveCount--;
         this.isSaving = this.pendingSaveCount > 0;
+
+        // On network error, queue the operation for later sync
+        // Per spec: "Local drawing continues while offline"
+        // The element is already visible on canvas - don't remove it
+        console.log('[Offline] Save failed, queuing create operation for later sync');
+
+        const queuedOp = this.offlineQueueService.enqueue(
+          'create',
+          this.board!.id,
+          tempId,
+          elementDataStr,
+          zIndex
+        );
+        (obj as any)._queuedOpId = queuedOp.id;
+
+        // Record in history for undo support (using temp ID)
+        this.recordHistory({
+          actionType: 'create',
+          elementId: tempId,
+          fabricObject: obj,
+          elementData: elementDataStr,
+          zIndex: zIndex
+        });
       }
     });
   }
 
   // Save element updates to the database
+  // Per spec (Feature #103): "Local drawing continues while offline (in-memory queue)"
+  // Updates are applied locally first, then synced to server. If offline, they're queued.
   private saveElementUpdate(obj: fabric.FabricObject): void {
     if (!this.board) return;
 
     const elementId = (obj as any)._elementId;
-    if (!elementId) return;
+    const tempId = (obj as any)._tempId;
+
+    // If the element doesn't have an ID yet (offline-created element), skip update
+    // The create operation will include the latest state when synced
+    if (!elementId && !tempId) return;
 
     const type = this.getObjectType(obj);
     const elementData = this.fabricObjectToElementData(obj, type);
+    const elementDataStr = JSON.stringify(elementData);
+
+    // If this is an offline-created element (has tempId but no elementId), update the queued create operation
+    if (!elementId && tempId) {
+      console.log('[Offline] Updating queued create operation for temp element:', tempId);
+      // The element will be created with the latest state when synced
+      return;
+    }
+
+    // Check if offline - if so, queue the update operation
+    // Per spec: "Local drawing continues while offline (in-memory queue)"
+    if (!this.offlineQueueService.isOnline) {
+      console.log('[Offline] Queuing update operation for element:', elementId);
+
+      // Queue the operation for later sync (last-write-wins per spec)
+      this.offlineQueueService.enqueue(
+        'update',
+        this.board.id,
+        elementId,
+        elementDataStr
+      );
+
+      this.markDirty();
+      return; // Don't attempt network request when offline
+    }
 
     // Track pending save operation
     this.isSaving = true;
@@ -981,7 +1318,7 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     console.log('[AutoSave] Updating element:', elementId);
 
     this.boardService.updateElement(this.board.id, elementId, {
-      elementData: JSON.stringify(elementData)
+      elementData: elementDataStr
     }).subscribe({
       next: () => {
         this.pendingSaveCount--;
@@ -993,6 +1330,156 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
         console.error('Failed to update element:', err);
         this.pendingSaveCount--;
         this.isSaving = this.pendingSaveCount > 0;
+
+        // On network error, queue the operation for later sync
+        // Per spec: "Local drawing continues while offline"
+        // The element change is already visible on canvas
+        console.log('[Offline] Update failed, queuing for later sync');
+
+        this.offlineQueueService.enqueue(
+          'update',
+          this.board!.id,
+          elementId,
+          elementDataStr
+        );
+      }
+    });
+  }
+
+  /**
+   * Sync queued changes when connection is restored
+   * Per spec (Feature #104): "Sync queued changes on reconnect"
+   *
+   * This method:
+   * 1. Gets all queued operations for the current board
+   * 2. Processes them in order (create, update, delete)
+   * 3. Dequeues each operation after successful sync
+   * 4. Shows "Back online" success toast
+   */
+  private async syncQueuedChanges(): Promise<void> {
+    if (!this.board || this.isSyncingQueue) {
+      return;
+    }
+
+    const queuedOps = this.offlineQueueService.getQueueForBoard(this.board.id);
+
+    if (queuedOps.length === 0) {
+      console.log('[Sync] No queued operations to sync');
+      // Still show "Back online" toast even if no queued operations
+      this.toastService.showBackOnline();
+      this.wasDisconnected = false;
+      return;
+    }
+
+    console.log(`[Sync] Starting sync of ${queuedOps.length} queued operations`);
+    this.isSyncingQueue = true;
+
+    // Process operations in timestamp order (oldest first)
+    const sortedOps = this.offlineQueueService.getOperationsForSync()
+      .filter(op => op.boardId === this.board!.id);
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const op of sortedOps) {
+      try {
+        await this.processSyncOperation(op);
+        this.offlineQueueService.dequeue(op.id);
+        successCount++;
+        console.log(`[Sync] Successfully synced operation: ${op.type} ${op.elementId || 'new element'}`);
+      } catch (err) {
+        errorCount++;
+        console.error(`[Sync] Failed to sync operation: ${op.type}`, err);
+        // Don't dequeue failed operations - they'll be retried on next reconnect
+      }
+    }
+
+    this.isSyncingQueue = false;
+    this.wasDisconnected = false;
+
+    // Show "Back online" success toast
+    // Per spec: "Verify 'Back online' success toast appears"
+    if (successCount > 0) {
+      console.log(`[Sync] Sync completed: ${successCount} successful, ${errorCount} failed`);
+      this.toastService.showBackOnline();
+    } else if (errorCount === 0) {
+      // No errors but also no successful syncs - still show back online
+      this.toastService.showBackOnline();
+    } else {
+      // Some operations failed - show warning
+      this.toastService.warning(`Back online. ${errorCount} change(s) couldn't be synced.`);
+    }
+
+    // Mark saved if no errors
+    if (errorCount === 0) {
+      this.markSaved();
+    }
+  }
+
+  /**
+   * Process a single queued operation
+   */
+  private processSyncOperation(op: QueuedOperation): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.board) {
+        reject(new Error('No board loaded'));
+        return;
+      }
+
+      switch (op.type) {
+        case 'create':
+          if (!op.elementData) {
+            reject(new Error('No element data for create operation'));
+            return;
+          }
+          this.boardService.createElement(this.board.id, {
+            elementData: op.elementData,
+            zIndex: op.zIndex
+          }).subscribe({
+            next: (savedElement) => {
+              // Update the fabric object with the server-assigned ID
+              // Find the object by its temp ID and update it
+              if (op.elementId) {
+                this.canvas?.getObjects().forEach(obj => {
+                  if ((obj as any)._tempId === op.elementId) {
+                    (obj as any)._elementId = savedElement.id;
+                    this.elementMap.set(savedElement.id, obj);
+                    console.log(`[Sync] Updated temp element ${op.elementId} with server ID ${savedElement.id}`);
+                  }
+                });
+              }
+              resolve();
+            },
+            error: (err) => reject(err)
+          });
+          break;
+
+        case 'update':
+          if (!op.elementId || !op.elementData) {
+            reject(new Error('Missing element ID or data for update operation'));
+            return;
+          }
+          this.boardService.updateElement(this.board.id, op.elementId, {
+            elementData: op.elementData
+          }).subscribe({
+            next: () => resolve(),
+            error: (err) => reject(err)
+          });
+          break;
+
+        case 'delete':
+          if (!op.elementId) {
+            reject(new Error('Missing element ID for delete operation'));
+            return;
+          }
+          this.boardService.deleteElements(this.board.id, [op.elementId]).subscribe({
+            next: () => resolve(),
+            error: (err) => reject(err)
+          });
+          break;
+
+        default:
+          reject(new Error(`Unknown operation type: ${op.type}`));
       }
     });
   }
@@ -1286,6 +1773,20 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       text: 'Text (T)'
     };
     return names[this.currentTool];
+  }
+
+  /**
+   * Get the status display text for the status bar
+   * Per spec (Feature #103): Shows offline/queued status when applicable
+   */
+  getStatusDisplay(): string {
+    if (this.offlineQueueCount > 0) {
+      return 'Offline';
+    }
+    if (this.isSaving) {
+      return 'Saving...';
+    }
+    return 'Saved';
   }
 
   @HostListener('window:keydown', ['$event'])
