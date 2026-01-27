@@ -1,7 +1,7 @@
 import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { ConfigStateService, AuthService } from '@abp/ng.core';
+import { ConfigStateService, AuthService, EnvironmentService } from '@abp/ng.core';
 
 /**
  * Banner component that displays a warning when the user's email is not verified.
@@ -175,6 +175,7 @@ export class EmailVerificationBannerComponent implements OnInit {
   private http = inject(HttpClient);
   private configState = inject(ConfigStateService);
   private authService = inject(AuthService);
+  private environment = inject(EnvironmentService);
 
   // Signals for reactive state management
   sending = signal(false);
@@ -215,7 +216,7 @@ export class EmailVerificationBannerComponent implements OnInit {
 
     // Fetch email verification status from the UserProfile API
     // This is more reliable than checking JWT claims
-    const apiUrl = this.configState.getDeep('environment.apis.default.url');
+    const apiUrl = this.environment.getEnvironment().apis.default.url;
     this.http.get<{ emailConfirmed: boolean; email: string }>(`${apiUrl}/api/app/user-profile/current-user-profile`)
       .subscribe({
         next: (profile) => {
@@ -248,7 +249,7 @@ export class EmailVerificationBannerComponent implements OnInit {
     this.sending.set(true);
     this.message.set('');
 
-    const apiUrl = this.configState.getDeep('environment.apis.default.url');
+    const apiUrl = this.environment.getEnvironment().apis.default.url;
 
     this.http.post(`${apiUrl}/api/account/resend-email-verification`, { email })
       .subscribe({
