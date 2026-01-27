@@ -431,6 +431,41 @@ interface RemoteSelection {
                 placeholder="ComponentName">
             </div>
 
+            <!-- Live Preview (Feature #123: Sandboxed iframe shows component preview) -->
+            <div class="preview-section">
+              <div class="preview-header">
+                <span class="preview-label">
+                  <i class="bi bi-eye"></i>
+                  Live Preview
+                </span>
+                <button
+                  class="btn-refresh-preview"
+                  (click)="refreshPreview()"
+                  title="Refresh preview"
+                  [disabled]="isPreviewLoading">
+                  <i class="bi bi-arrow-clockwise" [class.spinning]="isPreviewLoading"></i>
+                </button>
+              </div>
+              <div class="preview-container">
+                <iframe
+                  #previewIframe
+                  class="preview-iframe"
+                  [srcdoc]="previewHtml"
+                  sandbox="allow-scripts"
+                  title="Component preview"
+                  (load)="onPreviewLoad()"
+                  (error)="onPreviewError()">
+                </iframe>
+                <div class="preview-loading" *ngIf="isPreviewLoading">
+                  <div class="preview-spinner"></div>
+                </div>
+                <div class="preview-error" *ngIf="previewError">
+                  <i class="bi bi-exclamation-triangle"></i>
+                  <span>{{ previewError }}</span>
+                </div>
+              </div>
+            </div>
+
             <!-- Code Display (per spec: syntax-highlighted, dark theme) -->
             <div class="code-display">
               <div class="code-header">
@@ -1518,6 +1553,124 @@ interface RemoteSelection {
       background: rgba(99, 102, 241, 0.3);
     }
 
+    /* Live Preview Section (Feature #123) */
+    .preview-section {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .preview-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.625rem 1.25rem;
+      background: rgba(0, 0, 0, 0.2);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .preview-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      color: #a1a1aa;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .preview-label i {
+      font-size: 0.875rem;
+      color: #6366f1;
+    }
+
+    .btn-refresh-preview {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 4px;
+      color: #a5b4fc;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-refresh-preview:hover:not(:disabled) {
+      background: rgba(99, 102, 241, 0.25);
+    }
+
+    .btn-refresh-preview:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-refresh-preview i.spinning {
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .preview-container {
+      position: relative;
+      height: 180px;
+      background: #ffffff;
+      overflow: hidden;
+    }
+
+    .preview-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #ffffff;
+    }
+
+    .preview-loading {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .preview-spinner {
+      width: 24px;
+      height: 24px;
+      border: 2px solid #e4e4e7;
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .preview-error {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      background: rgba(239, 68, 68, 0.1);
+      color: #ef4444;
+      font-size: 0.75rem;
+      text-align: center;
+      padding: 1rem;
+    }
+
+    .preview-error i {
+      font-size: 1.5rem;
+    }
+
     .code-block {
       flex: 1;
       margin: 0;
@@ -1726,6 +1879,7 @@ interface RemoteSelection {
 export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   @ViewChild('fabricCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
   @ViewChild('canvasWrapper') canvasWrapperRef!: ElementRef<HTMLDivElement>;
+  @ViewChild('previewIframe') previewIframeRef!: ElementRef<HTMLIFrameElement>;
 
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -1769,10 +1923,17 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   generatedCode = '';
   highlightedCode = ''; // Feature #121: Syntax highlighted HTML
   componentName = 'GeneratedComponent';
+  originalComponentName = 'GeneratedComponent'; // Feature #122: Track original name for code updates
   generationError: string | null = null;
   // Quota tracking (per spec: "X / Y generations remaining")
   generationsUsed = 0;
   generationsLimit = 30; // Default for authenticated users (per spec)
+
+  // Live Preview state (Feature #123: Live preview renders generated component)
+  // Per spec: Sandboxed iframe shows component preview
+  previewHtml = '';
+  isPreviewLoading = false;
+  previewError: string | null = null;
 
   // Drawing state
   private isDrawing = false;
@@ -2544,8 +2705,12 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
           this.generatedCode = result.code;
           this.highlightedCode = this.highlightCode(result.code); // Feature #121: Apply syntax highlighting
           this.componentName = result.componentName;
+          this.originalComponentName = result.componentName; // Feature #122: Track original for code updates
           this.isCodePanelOpen = true;
           this.generationsUsed++;
+
+          // Feature #123: Update live preview with generated code
+          this.updatePreview();
 
           // Show success toast per spec: "Toast: Generation complete (with 'View' button, 5s)"
           this.toastService.success(
@@ -2729,12 +2894,14 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   /**
-   * Enforce PascalCase component name format (Feature #119)
+   * Enforce PascalCase component name format (Feature #119 + #122)
    * Per spec: Component name (editable, PascalCase enforced)
+   * Feature #122: Code updates with new name
    */
   enforceComponentNameFormat(): void {
     if (!this.componentName) {
       this.componentName = 'GeneratedComponent';
+      this.updateCodeWithNewName();
       return;
     }
 
@@ -2759,6 +2926,36 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     console.log('[CodePanel] Component name formatted:', this.componentName);
+
+    // Feature #122: Update code with new component name
+    this.updateCodeWithNewName();
+  }
+
+  /**
+   * Update generated code with new component name (Feature #122)
+   * Replaces all occurrences of the original component name with the new name
+   */
+  private updateCodeWithNewName(): void {
+    if (!this.generatedCode || !this.originalComponentName || this.componentName === this.originalComponentName) {
+      return;
+    }
+
+    console.log('[CodePanel] Updating code with new name:', this.originalComponentName, '->', this.componentName);
+
+    // Replace the original component name with the new name in the code
+    // This handles: function declarations, export statements, JSX tags, etc.
+    const escapedOriginal = this.originalComponentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const nameRegex = new RegExp(`\\b${escapedOriginal}\\b`, 'g');
+    this.generatedCode = this.generatedCode.replace(nameRegex, this.componentName);
+
+    // Update syntax highlighting
+    this.highlightedCode = this.highlightCode(this.generatedCode);
+
+    // Feature #123: Update preview when code changes
+    this.updatePreview();
+
+    // Update the original name to the new name for future edits
+    this.originalComponentName = this.componentName;
   }
 
   /**
@@ -2780,6 +2977,112 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     this.generatedCode = '';
     this.generationError = null;
     this.onGenerateComponent();
+  }
+
+  /**
+   * Generate preview HTML for the sandboxed iframe (Feature #123)
+   * Per spec: Live preview iframe (sandboxed) shows component preview
+   * The preview renders the React + Tailwind component in a sandboxed environment
+   */
+  private generatePreviewHtml(code: string): string {
+    // Extract the component's JSX return statement to render statically
+    // Since we can't run React in the iframe without bundling,
+    // we'll extract the JSX and render it with Tailwind CSS loaded
+
+    // Find the return statement in the component
+    const returnMatch = code.match(/return\s*\(\s*([\s\S]*?)\s*\);?\s*(?:}|$)/);
+    let jsxContent = '';
+
+    if (returnMatch) {
+      jsxContent = returnMatch[1];
+      // Clean up the JSX for HTML rendering
+      // Replace className with class for HTML
+      jsxContent = jsxContent.replace(/className=/g, 'class=');
+      // Remove TypeScript/JSX expressions like {variable} or {() => void}
+      jsxContent = jsxContent.replace(/\{[^}]*\}/g, '');
+      // Convert self-closing React tags to proper HTML
+      jsxContent = jsxContent.replace(/<(\w+)([^>]*)\s*\/>/g, '<$1$2></$1>');
+    } else {
+      // If we can't extract JSX, show a placeholder
+      jsxContent = '<div class="p-4 text-center text-gray-500">Preview unavailable</div>';
+    }
+
+    // Create a complete HTML document with Tailwind CDN
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 8px;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    /* Remove any parent access - sandbox enforced */
+    * { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  ${jsxContent}
+</body>
+</html>`;
+  }
+
+  /**
+   * Update the live preview with the current generated code (Feature #123)
+   * Called when code is generated or refreshed
+   */
+  updatePreview(): void {
+    if (!this.generatedCode) {
+      this.previewHtml = '';
+      this.previewError = null;
+      return;
+    }
+
+    this.isPreviewLoading = true;
+    this.previewError = null;
+    console.log('[Preview] Generating preview HTML...');
+
+    try {
+      this.previewHtml = this.generatePreviewHtml(this.generatedCode);
+      console.log('[Preview] Preview HTML generated successfully');
+    } catch (error) {
+      console.error('[Preview] Failed to generate preview:', error);
+      this.previewError = 'Failed to render preview';
+      this.isPreviewLoading = false;
+    }
+  }
+
+  /**
+   * Refresh the live preview (Feature #123)
+   * Per spec: User can refresh the preview
+   */
+  refreshPreview(): void {
+    console.log('[Preview] Refreshing preview...');
+    this.updatePreview();
+  }
+
+  /**
+   * Handle preview iframe load event (Feature #123)
+   * Called when the iframe finishes loading
+   */
+  onPreviewLoad(): void {
+    this.isPreviewLoading = false;
+    console.log('[Preview] Preview loaded successfully');
+  }
+
+  /**
+   * Handle preview iframe error event (Feature #123)
+   * Called when the iframe fails to load
+   */
+  onPreviewError(): void {
+    this.isPreviewLoading = false;
+    this.previewError = 'Preview failed to load';
+    console.error('[Preview] Preview failed to load');
   }
 
   /**
@@ -4143,7 +4446,11 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
         this.deleteSelectedObjects();
         break;
       case 'escape':
-        if (this.canvas) {
+        // Feature #129: Escape key closes code panel if open
+        if (this.isCodePanelOpen) {
+          this.closeCodePanel();
+        } else if (this.canvas) {
+          // Otherwise, deselect elements on canvas
           this.canvas.discardActiveObject();
           this.canvas.renderAll();
         }
