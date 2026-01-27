@@ -225,4 +225,55 @@
       </div>
     </div>
   </div>
+
+  <!-- Share Board Modal -->
+  <div class="modal-overlay" *ngIf="isShareModalOpen" (click)="closeShareModal()">
+    <div class="modal glass-card share-modal" role="dialog" aria-modal="true" aria-labelledby="shareBoardTitle" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2 class="modal-title" id="shareBoardTitle">
+          <i class="bi bi-share"></i>
+          Share Board
+        </h2>
+        <button class="modal-close" (click)="closeShareModal()" aria-label="Close modal">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="share-description">
+          Share this link with your team to collaborate on <strong>{{ shareBoard_?.name }}</strong>
+        </p>
+        <div class="share-link-container">
+          <input
+            type="text"
+            class="share-link-input"
+            [value]="shareLink"
+            readonly
+            aria-label="Share link"
+          />
+          <button
+            class="btn-copy"
+            (click)="copyShareLink()"
+            [class.copied]="shareLinkCopied"
+            title="Copy link"
+          >
+            <i class="bi" [class.bi-clipboard]="!shareLinkCopied" [class.bi-check-lg]="shareLinkCopied"></i>
+            {{ shareLinkCopied ? 'Copied!' : 'Copy' }}
+          </button>
+        </div>
+        <p class="share-note">
+          <i class="bi bi-info-circle"></i>
+          Anyone with this link can join and collaborate on your board.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" (click)="regenerateShareToken()">
+          <i class="bi bi-arrow-repeat"></i>
+          Regenerate Link
+        </button>
+        <button class="btn-primary" (click)="closeShareModal()">
+          Done
+        </button>
+      </div>
+    </div>
+  </div>
 </div>

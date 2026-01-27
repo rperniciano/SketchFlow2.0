@@ -10,6 +10,7 @@ interface Board {
   lastModified: Date;
   participantCount: number;
   thumbnailUrl?: string;
+  shareToken: string;
 }
 
 @Component({
@@ -32,6 +33,12 @@ export class DashboardComponent implements OnInit {
   newBoardName = '';
   isLoading = true;
   isCreating = false;
+
+  // Share modal state
+  isShareModalOpen = false;
+  shareBoard_: Board | null = null;
+  shareLink = '';
+  shareLinkCopied = false;
 
   ngOnInit(): void {
     this.loadBoards();
@@ -71,7 +78,8 @@ export class DashboardComponent implements OnInit {
       id: dto.id,
       name: dto.name,
       lastModified: new Date(dto.lastModificationTime || dto.creationTime),
-      participantCount: dto.participantCount || 1
+      participantCount: dto.participantCount || 1,
+      shareToken: dto.shareToken
     };
   }
 
@@ -134,7 +142,8 @@ export class DashboardComponent implements OnInit {
           id: board.id,
           name: board.name,
           lastModified: new Date(),
-          participantCount: 1
+          participantCount: 1,
+          shareToken: board.shareToken
         });
         // Navigate to the canvas
         this.router.navigate(['/canvas', board.id]);
@@ -174,8 +183,58 @@ export class DashboardComponent implements OnInit {
   }
 
   shareBoard(board: Board): void {
-    // TODO: Implement share modal
-    console.log('Share board:', board);
+    this.shareBoard_ = board;
+    this.shareLink = this.generateShareLink(board.shareToken);
+    this.shareLinkCopied = false;
+    this.isShareModalOpen = true;
+  }
+
+  closeShareModal(): void {
+    this.isShareModalOpen = false;
+    this.shareBoard_ = null;
+    this.shareLink = '';
+    this.shareLinkCopied = false;
+  }
+
+  private generateShareLink(shareToken: string): string {
+    // Generate the share link based on current location
+    const baseUrl = window.location.origin;
+    return `${baseUrl}/join/${shareToken}`;
+  }
+
+  copyShareLink(): void {
+    navigator.clipboard.writeText(this.shareLink).then(() => {
+      this.shareLinkCopied = true;
+      // Reset copied state after 2 seconds
+      setTimeout(() => {
+        this.shareLinkCopied = false;
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy share link:', err);
+      alert('Failed to copy link. Please copy it manually.');
+    });
+  }
+
+  regenerateShareToken(): void {
+    if (!this.shareBoard_) return;
+
+    this.boardService.regenerateShareToken(this.shareBoard_.id).subscribe({
+      next: (newToken) => {
+        if (this.shareBoard_) {
+          this.shareBoard_.shareToken = newToken;
+          this.shareLink = this.generateShareLink(newToken);
+          // Update the token in the boards list
+          const boardIndex = this.boards.findIndex(b => b.id === this.shareBoard_?.id);
+          if (boardIndex > -1) {
+            this.boards[boardIndex].shareToken = newToken;
+          }
+        }
+      },
+      error: (err) => {
+        console.error('Failed to regenerate share token:', err);
+        alert('Failed to regenerate share link. Please try again.');
+      }
+    });
   }
 
   deleteBoard(board: Board): void {

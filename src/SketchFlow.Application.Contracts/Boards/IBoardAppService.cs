@@ -56,4 +56,11 @@ public interface IBoardAppService : IApplicationService
     /// Gets a board by its share token (for join preview).
     /// </summary>
     Task<BoardDto?> GetByShareTokenAsync(string shareToken);
+
+    /// <summary>
+    /// Triggers the trash purge process to permanently delete boards that have been in trash for over 30 days.
+    /// This method is intended for testing/admin purposes.
+    /// </summary>
+    /// <returns>The number of boards permanently deleted.</returns>
+    Task<int> TriggerTrashPurgeAsync();
 }

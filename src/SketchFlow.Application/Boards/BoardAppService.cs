@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Volo.Abp;
 using Volo.Abp.Application.Dtos;
+using Volo.Abp.Data;
 using Volo.Abp.Domain.Repositories;
 
 namespace SketchFlow.Boards;
@@ -13,10 +14,14 @@ namespace SketchFlow.Boards;
 public class BoardAppService : SketchFlowAppService, IBoardAppService
 {
     private readonly IRepository<Board, Guid> _boardRepository;
+    private readonly IDataFilter _dataFilter;
 
-    public BoardAppService(IRepository<Board, Guid> boardRepository)
+    public BoardAppService(
+        IRepository<Board, Guid> boardRepository,
+        IDataFilter dataFilter)
     {
         _boardRepository = boardRepository;
+        _dataFilter = dataFilter;
     }
 
     public async Task<PagedResultDto<BoardDto>> GetListAsync(GetBoardListDto input)
@@ -51,17 +56,27 @@ public class BoardAppService : SketchFlowAppService, IBoardAppService
     {
         var userId = CurrentUser.Id ?? throw new UnauthorizedAccessException();
 
-        // Get queryable with soft deleted items
-        var queryable = await _boardRepository.WithDetailsAsync();
+        // Disable soft-delete filter to get deleted items
+        using (_dataFilter.Disable<ISoftDelete>())
+        {
+            var queryable = await _boardRepository.GetQueryableAsync();
 
-        // For trash, we need to query soft-deleted items
-        // ABP's soft delete filter needs to be disabled for this
-        var query = (await _boardRepository.GetQueryableAsync())
-            .Where(b => b.OwnerId == userId);
+            // Query only soft-deleted boards owned by the current user
+            var query = queryable.Where(b => b.OwnerId == userId && b.IsDeleted);
 
-        // Since we can't easily disable soft-delete filter in Application layer,
-        // we'll return empty for now - this can be enhanced with a custom repository later
-        return new PagedResultDto<BoardDto>(0, new List<BoardDto>());
+            var totalCount = query.Count();
+
+            // Sort by deletion time (most recently deleted first)
+            var boards = query
+                .OrderByDescending(b => b.DeletionTime)
+                .Skip(input.SkipCount)
+                .Take(input.MaxResultCount > 0 ? input.MaxResultCount : 20)
+                .ToList();
+
+            var items = boards.Select(b => MapToDto(b)).ToList();
+
+            return new PagedResultDto<BoardDto>(totalCount, items);
+        }
     }
 
     public async Task<BoardDto> GetAsync(Guid id)
@@ -129,16 +144,58 @@ public class BoardAppService : SketchFlowAppService, IBoardAppService
 
     public async Task<BoardDto> RestoreAsync(Guid id)
     {
-        // Restore requires custom repository with soft-delete filter disabled
-        // For now, throw not implemented
-        throw new NotImplementedException("Restore functionality requires custom repository implementation");
+        var userId = CurrentUser.Id ?? throw new UnauthorizedAccessException();
+
+        // Disable soft-delete filter to find the deleted board
+        using (_dataFilter.Disable<ISoftDelete>())
+        {
+            var board = await _boardRepository.FindAsync(b => b.Id == id && b.OwnerId == userId && b.IsDeleted);
+
+            if (board == null)
+            {
+                throw new BusinessException("SketchFlow:BoardNotFound");
+            }
+
+            // Restore the board by setting IsDeleted to false
+            // We need to access the entity to modify its soft-delete properties
+            // ABP's FullAuditedAggregateRoot implements ISoftDelete with IsDeleted property
+            var entityType = board.GetType();
+            var isDeletedProperty = entityType.GetProperty("IsDeleted");
+            var deletionTimeProperty = entityType.GetProperty("DeletionTime");
+
+            if (isDeletedProperty != null)
+            {
+                isDeletedProperty.SetValue(board, false);
+            }
+
+            if (deletionTimeProperty != null)
+            {
+                deletionTimeProperty.SetValue(board, null);
+            }
+
+            await _boardRepository.UpdateAsync(board);
+
+            return MapToDto(board);
+        }
     }
 
     public async Task PermanentDeleteAsync(Guid id)
     {
-        // Permanent delete requires custom repository with soft-delete filter disabled
-        // For now, throw not implemented
-        throw new NotImplementedException("Permanent delete functionality requires custom repository implementation");
+        var userId = CurrentUser.Id ?? throw new UnauthorizedAccessException();
+
+        // Disable soft-delete filter to find the deleted board
+        using (_dataFilter.Disable<ISoftDelete>())
+        {
+            var board = await _boardRepository.FindAsync(b => b.Id == id && b.OwnerId == userId && b.IsDeleted);
+
+            if (board == null)
+            {
+                throw new BusinessException("SketchFlow:BoardNotFound");
+            }
+
+            // Hard delete the board - this will bypass soft-delete and remove the record permanently
+            await _boardRepository.HardDeleteAsync(board);
+        }
     }
 
     public async Task<string> RegenerateShareTokenAsync(Guid id)
@@ -169,6 +226,34 @@ public class BoardAppService : SketchFlowAppService, IBoardAppService
         }
 
         return MapToDto(board);
+    }
+
+    /// <summary>
+    /// Triggers the trash purge process to permanently delete boards that have been in trash for over 30 days.
+    /// This method is intended for testing/admin purposes.
+    /// </summary>
+    /// <returns>The number of boards permanently deleted.</returns>
+    public async Task<int> TriggerTrashPurgeAsync()
+    {
+        var cutoffDate = DateTime.UtcNow.AddDays(-TrashPurgeBackgroundWorker.TrashRetentionDays);
+        var deletedCount = 0;
+
+        using (_dataFilter.Disable<ISoftDelete>())
+        {
+            var queryable = await _boardRepository.GetQueryableAsync();
+
+            var expiredBoards = queryable
+                .Where(b => b.IsDeleted && b.DeletionTime.HasValue && b.DeletionTime.Value < cutoffDate)
+                .ToList();
+
+            foreach (var board in expiredBoards)
+            {
+                await _boardRepository.HardDeleteAsync(board);
+                deletedCount++;
+            }
+        }
+
+        return deletedCount;
     }
 
     private static BoardDto MapToDto(Board board, int participantCount = 1)
