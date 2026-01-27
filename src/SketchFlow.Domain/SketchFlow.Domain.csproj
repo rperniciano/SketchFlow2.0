@@ -8,6 +8,11 @@
     <RootNamespace>SketchFlow</RootNamespace>
   </PropertyGroup>
 
+  <!-- Allow Application layer to access internal testing methods (Feature #135) -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="SketchFlow.Application" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\SketchFlow.Domain.Shared\SketchFlow.Domain.Shared.csproj" />
   </ItemGroup>
