@@ -542,6 +542,11 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   private redoStack: HistoryEntry[] = [];
   private isUndoRedoAction = false; // Flag to prevent recording during undo/redo
 
+  // Zoom configuration (per spec: 0.1x to 10x range)
+  private readonly MIN_ZOOM = 0.1;
+  private readonly MAX_ZOOM = 10;
+  private readonly ZOOM_STEP = 0.1; // 10% zoom increments
+
   colors: CanvasColors[] = [
     { name: 'Black', value: '#000000' },
     { name: 'White', value: '#ffffff' },
