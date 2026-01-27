@@ -153,8 +153,24 @@ export class DashboardComponent implements OnInit {
   }
 
   renameBoard(board: Board): void {
-    // TODO: Implement rename modal
-    console.log('Rename board:', board);
+    // Use browser prompt as a workaround for modal CSS stacking context issue with ABP Lepton theme
+    const newName = window.prompt('Enter new board name:', board.name);
+    if (newName && newName.trim() && newName.trim() !== board.name) {
+      this.boardService.update(board.id, { name: newName.trim() }).subscribe({
+        next: (updatedBoard) => {
+          // Update the board in the local list
+          const index = this.boards.findIndex(b => b.id === board.id);
+          if (index > -1) {
+            this.boards[index].name = updatedBoard.name;
+            this.boards[index].lastModified = new Date(updatedBoard.lastModificationTime || updatedBoard.creationTime);
+          }
+        },
+        error: (err) => {
+          console.error('Failed to rename board:', err);
+          alert('Failed to rename board. Please try again.');
+        }
+      });
+    }
   }
 
   shareBoard(board: Board): void {

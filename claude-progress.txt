@@ -2146,3 +2146,115 @@ The case-insensitive search was already implemented:
 - Browser automation working
 - All services operational
 
+
+---
+
+## Session - 2026-01-27 (Regression Testing Feature #38)
+
+### Context
+- Assigned Feature #38: "Dashboard loads after login"
+- Description: User is directed to dashboard after successful login
+- Category: B. Navigation Integrity
+- Status: Previously PASSING - regression testing
+
+### Verification Results
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Log in as registered user | Login successful | PASS - Logged in as admin |
+| 2. Verify URL is /dashboard | URL should be /dashboard | PASS - URL is http://localhost:4200/dashboard |
+| 3. Verify dashboard layout displays | Dashboard visible | PASS - My Boards heading, board cards visible |
+| 4. Verify header with search and user avatar | Header elements present | PASS - Search box, admin button visible |
+| 5. Verify board grid area is visible | Board cards shown | PASS - MyTestBoard card visible |
+
+### Test Details
+- Navigated to landing page at http://localhost:4200
+- Clicked Login link, redirected to OAuth login page
+- Entered admin credentials and clicked Login
+- Successfully redirected to /dashboard
+- Verified all dashboard elements present:
+  - "My Boards" heading
+  - Search input box ("Search boards...")
+  - User avatar button ("admin")
+  - "New Board" button
+  - Navigation tabs (My Boards, Trash)
+  - Board grid with "MyTestBoard" card
+
+### Console Errors
+- Only a cookie SameSite warning (development mode issue, not a regression)
+
+### Screenshots
+- feature38-dashboard-after-login.png - Dashboard displaying correctly after login
+
+### Feature Result
+- **Feature #38: STILL PASSING** - No regression detected
+- All verification steps completed successfully
+- Dashboard loads correctly after login
+
+### Current Progress
+- 20/273 features passing (7.3%)
+- Dashboard loading after login verified and working correctly
+
+---
+
+## Session 22 - 2026-01-27 (Feature #47 - Boards sorted by last modified)
+
+### Context
+- Assigned Feature #47: "Boards sorted by last modified (most recent first)"
+- Description: Dashboard sorts boards with most recently modified first
+- Category: K. Default & Reset
+
+### What Was Accomplished
+
+1. **Verified Backend Implementation**:
+   - BoardAppService.GetListAsync() already sorts by LastModificationTime descending (line 40)
+   - Board entity extends FullAuditedAggregateRoot which automatically tracks modification time
+   - Backend correctly uses: .OrderByDescending(b => b.LastModificationTime ?? b.CreationTime)
+
+2. **Verified Frontend Integration**:
+   - Dashboard component maps lastModificationTime to board display
+   - Rename functionality was implemented to allow modifying boards
+
+3. **Full End-to-End Testing with Browser Automation**:
+   - Registered test user: sort_test_47
+   - Created board "First" at 2:06 PM
+   - Waited 2 seconds
+   - Created board "Second" at 2:07 PM
+   - Verified "Second" appeared BEFORE "First" (newer first)
+   - Renamed "First" to "First-Modified" (triggering LastModificationTime update)
+   - Refreshed dashboard
+   - Verified "First-Modified" now appeared FIRST
+
+### Feature #47 Verification Checklist
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Create board 'First' | Board created | PASS |
+| 2. Wait 1 second | Delay applied | PASS (waited 2 seconds) |
+| 3. Create board 'Second' | Board created | PASS |
+| 4. Navigate to dashboard | Dashboard loads | PASS |
+| 5. Verify 'Second' appears before 'First' | Newer board first | PASS |
+| 6. Modify 'First' board | Board renamed | PASS |
+| 7. Return to dashboard | Dashboard reloads | PASS |
+| 8. Verify 'First' now appears first | Modified board now first | PASS |
+
+### Console Errors
+- None (no JavaScript runtime errors)
+
+### Screenshots Captured
+- feature47-boards-sorted-after-modification.png - Dashboard showing "First-Modified" before "Second"
+
+### Feature Result
+- **Feature #47: PASSING**
+- All verification steps completed successfully
+- Boards are correctly sorted by last modified timestamp (most recent first)
+
+### Current Progress
+- **20/273 features passing** (~7.3%)
+- Dashboard board sorting verified end-to-end
+
+### Environment Status
+- Backend running on http://localhost:44326
+- Frontend running on http://localhost:4200
+- Browser automation working
+- All services operational
