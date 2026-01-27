@@ -1156,6 +1156,13 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
+    // Handle Select All: Ctrl+A
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+      event.preventDefault();
+      this.selectAllObjects();
+      return;
+    }
+
     // Skip tool shortcuts if editing text
     if (isEditingText) {
       return;
@@ -1203,6 +1210,32 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     });
 
     this.canvas.renderAll();
+  }
+
+  /**
+   * Select all objects on canvas (Ctrl+A)
+   */
+  private selectAllObjects(): void {
+    if (!this.canvas) return;
+
+    const allObjects = this.canvas.getObjects();
+    if (allObjects.length === 0) {
+      // No objects to select
+      return;
+    }
+
+    if (allObjects.length === 1) {
+      // Single object - set it as active
+      this.canvas.setActiveObject(allObjects[0]);
+    } else {
+      // Multiple objects - create ActiveSelection
+      const selection = new fabric.ActiveSelection(allObjects, { canvas: this.canvas });
+      this.canvas.setActiveObject(selection);
+    }
+
+    this.canvas.requestRenderAll();
+    this.selectedElementCount = this.canvas.getActiveObjects().length;
+    console.log(`[Canvas] Selected all ${this.selectedElementCount} objects`);
   }
 
   /**
