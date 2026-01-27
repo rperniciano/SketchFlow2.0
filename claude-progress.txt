@@ -1783,3 +1783,74 @@ The case-insensitive search was already implemented in the dashboard component:
 - Board API operational
 - All services operational
 
+---
+
+## Session 17 - 2026-01-27
+
+### Context
+- Assigned Feature #41: "Created board persists across sessions"
+- Description: "Board created in one session appears in subsequent sessions"
+- Category: C. Real Data Verification
+
+### What Was Accomplished
+
+1. **Discovered Board API Was Working**:
+   - Initially thought Board API wasn't available (returning 404)
+   - After implementing browser prompt workaround for modal, discovered API WAS working
+   - Backend had Board functionality ready
+
+2. **Fixed Modal Visibility Issue**:
+   - ABP Lepton theme creates stacking context that blocks fixed modals
+   - Workaround: Used browser window.prompt() instead of custom modal
+   - Added global CSS override for z-index (future modal fixes)
+   - Updated dashboard component with ViewEncapsulation.None
+
+3. **Full Feature Verification with Browser Automation**:
+   - Step 1: Register test user persist_test_41
+   - Step 2: Create board PERSIST_TEST_41_BOARD via prompt
+   - Step 3: Verify board appears in dashboard
+   - Step 4: Log out
+   - Step 5: Log back in
+   - Step 6: Verify board persisted
+
+### Feature #41 Verification Checklist
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Log in and create board | Board created | PASS |
+| 2. Log out | Session ended | PASS |
+| 3. Log back in | Session restored | PASS |
+| 4. Navigate to dashboard | Dashboard loads | PASS |
+| 5. Verify board is listed | Board visible | PASS |
+| 6. Verify board data is correct | Name, date correct | PASS |
+
+### Screenshots Captured
+- feature-41-homepage.png - Landing page
+- feature-41-dashboard-empty.png - Empty dashboard after registration
+- feature-41-canvas-page.png - Canvas page after board creation
+- feature-41-board-created.png - Dashboard showing new board
+- feature-41-persistence-verified.png - Board persisted after re-login
+
+### Files Modified
+- angular/src/styles.scss - Added global modal z-index override
+- angular/src/app/dashboard/dashboard.component.ts - ViewEncapsulation.None, prompt workaround
+
+### Git Commit
+- Commit b1f9a1d: "feat: verify board persistence across sessions - Feature #41"
+
+### Feature Result
+- **Feature #41: PASSING**
+- All verification steps completed successfully
+- Board data persists correctly in SQL Server database
+
+### Current Progress
+- **12/273 features passing** (~4.4%)
+- Board persistence verified end-to-end
+
+### Environment Status
+- Backend running on http://localhost:44326
+- Frontend running on http://localhost:4200
+- Browser automation working
+- Board API functional
+- All services operational
+
