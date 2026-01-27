@@ -306,3 +306,77 @@ Focus indicators also work for:
   6. ✅ Verified status bar shows "Connection status: disconnected"
 - Screenshot: feature-102-connection-lost-banner-verified.png
 - Console logs confirm connection events and reconnection behavior
+[Testing] 2026-01-27 21:08:16 - Feature #42 regression test completed
+- Feature: Dashboard displays board cards with correct info
+- Status: PASSING (no regression found)
+- Verification steps completed:
+  1. ✅ Logged in as admin user
+  2. ✅ Created new board 'FEATURE_42_TEST_BOARD'
+  3. ✅ Navigated to dashboard
+  4. ✅ Found the board card at top of list
+  5. ✅ Verified board name displayed: 'FEATURE_42_TEST_BOARD'
+  6. ✅ Verified last modified timestamp: '1/27/26, 9:07 PM' with clock icon
+  7. ✅ Verified participant count: '1' with people icon
+- Screenshots: feature-42-dashboard-board-cards.png, feature-42-debug.png
+- Console errors: Only unrelated ABP cookie warning (XSRF-TOKEN SameSite)
+
+=== Session: Feature #100 - SignalR Connection on Board Join ===
+Date: 2026-01-27
+
+## Feature Verified
+- Feature #100: "SignalR connection establishes on board join"
+- Description: "Real-time connection initiates when opening board"
+- Category: F. UI-Backend Integration
+- Status: PASSED ✓
+
+## Verification Steps Completed
+1. ✅ Open canvas for a board - Opened "OFFLINE_SYNC_TEST_104"
+2. ✅ Open developer tools network tab - Verified via console logs
+3. ✅ Verify WebSocket/SignalR connection established - Console shows: "WebSocket connected to ws://localhost:5001/signalr/board?id=XoRyhfyXUlGOtwcXPA_eKA"
+4. ✅ Verify connection status indicator shows green - Screenshot shows green dot with "Connected" text
+
+## Implementation Details
+
+### Backend (ASP.NET Core)
+1. **BoardHub.cs** - SignalR hub for real-time board collaboration
+   - OnConnectedAsync/OnDisconnectedAsync for connection lifecycle
+   - JoinBoard(boardId, guestName) - joins a board room
+   - LeaveBoard(boardId) - leaves a board room
+   - UpdateCursor(boardId, x, y) - broadcasts cursor position
+   - CreateElement/UpdateElement/DeleteElements - broadcasts element changes
+
+2. **SketchFlowHttpApiHostModule.cs**
+   - Added ConfigureSignalR() with auto-reconnect settings
+   - Mapped hub endpoint at /signalr/board
+
+### Frontend (Angular)
+1. **signalr.service.ts** - SignalR client service
+   - Uses @microsoft/signalr package
+   - connect(boardId, guestName) - establishes connection
+   - disconnect() - cleans up connection
+   - Custom reconnect delays: 2s, 5s, 10s, 30s
+   - Event handlers for board events
+
+2. **canvas.component.ts**
+   - Injects SignalRService
+   - connectToSignalR() called in initializeCanvas()
+   - disconnect() called in ngOnDestroy()
+
+3. **environment.ts**
+   - Added signalRUrl for development testing
+
+## Console Logs Observed
+- [SignalR] Connecting to board: 9fd5aa19-2dc5-7b21-158d-3a1f133db445
+- [Connection] Status: Connecting...
+- WebSocket connected to ws://localhost:5001/signalr/board?id=...
+- Using HubProtocol 'json'
+- [SignalR] Connected successfully
+- [SignalR] Joined board: {BoardId, ConnectionId, Timestamp}
+- [Connection] Status: Connected
+
+## Screenshots Captured
+- signalr-connected-feature-100.png - Full canvas view
+- signalr-status-bar-feature-100.png - Status bar showing "Connected" in green
+
+## Current Status
+- 79/273 features passing (28.9%)
