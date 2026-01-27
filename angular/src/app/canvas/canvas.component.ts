@@ -1046,19 +1046,25 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       this.handleRemoteCursorMove(data);
     });
 
-    // Handle participant join to assign cursor color
+    // Handle participant join to assign cursor color and show notification (Feature #111)
     this.signalRService.on('OnParticipantJoined', (data: { connectionId: string; guestName?: string }) => {
       console.log('[Cursor] Participant joined:', data.connectionId, data.guestName);
+
       // Initialize cursor when participant joins (will be positioned when they move)
       const color = this.getColorForConnection(data.connectionId);
+      const participantName = data.guestName || 'User';
       this.remoteCursors.set(data.connectionId, {
         connectionId: data.connectionId,
         x: -100, // Start offscreen
         y: -100,
         color: color,
-        name: data.guestName || 'User',
+        name: participantName,
         lastUpdate: Date.now()
       });
+
+      // Feature #111: Show join notification toast (per spec: subtle, 3s auto-dismiss)
+      // Per spec: "Toast: User joined board (subtle, 3s auto-dismiss)"
+      this.toastService.info(`${participantName} joined the board`, 3000);
     });
 
     // Handle participant leave to remove cursor
