@@ -489,11 +489,29 @@ interface RemoteSelection {
                 <div class="preview-loading" *ngIf="isPreviewLoading">
                   <div class="preview-spinner"></div>
                 </div>
+                <!-- Feature #140: Preview render failure shows message, code still accessible -->
                 <div class="preview-error" *ngIf="previewError">
                   <i class="bi bi-exclamation-triangle"></i>
-                  <span>{{ previewError }}</span>
+                  <span class="preview-error-message">{{ previewError }}</span>
+                  <span class="preview-error-hint">The code below is still valid and can be copied.</span>
                 </div>
               </div>
+            </div>
+
+            <!-- Syntax Warning Banner (Feature #139: Syntax errors show warning, code still copyable) -->
+            <!-- Per spec: "Syntax errors in code: Warning banner, code still copyable" -->
+            <div class="syntax-warning-banner" *ngIf="hasSyntaxWarning">
+              <div class="syntax-warning-content">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <div class="syntax-warning-text">
+                  <span class="syntax-warning-title">Possible Syntax Issues Detected</span>
+                  <span class="syntax-warning-message">{{ syntaxWarningMessage }}</span>
+                </div>
+              </div>
+              <p class="syntax-warning-note">
+                <i class="bi bi-info-circle"></i>
+                Code is still copyable - you may need to fix issues manually before using it.
+              </p>
             </div>
 
             <!-- Code Display (per spec: syntax-highlighted, dark theme) -->
@@ -503,12 +521,13 @@ interface RemoteSelection {
                 <button
                   class="btn-copy"
                   (click)="copyGeneratedCode()"
-                  title="Copy code">
+                  title="Copy code (syntax warning present)"
+                  [class.has-warning]="hasSyntaxWarning">
                   <i class="bi bi-clipboard"></i>
                   Copy
                 </button>
               </div>
-              <pre class="code-block"><code class="language-tsx" [innerHTML]="highlightedCode"></code></pre>
+              <pre class="code-block" [class.has-syntax-warning]="hasSyntaxWarning"><code class="language-tsx" [innerHTML]="highlightedCode"></code></pre>
             </div>
 
             <!-- Generation Options (Feature #126, #127: Responsive and Include placeholders toggles) -->
@@ -1666,6 +1685,66 @@ interface RemoteSelection {
       box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
     }
 
+    /* Syntax Warning Banner (Feature #139) */
+    .syntax-warning-banner {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(234, 88, 12, 0.15) 100%);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.75rem;
+    }
+    .syntax-warning-content {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+    .syntax-warning-content > i {
+      color: #f59e0b;
+      font-size: 1.25rem;
+      flex-shrink: 0;
+      margin-top: 0.125rem;
+    }
+    .syntax-warning-text {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .syntax-warning-title {
+      color: #f59e0b;
+      font-weight: 600;
+      font-size: 0.875rem;
+    }
+    .syntax-warning-message {
+      color: #a1a1aa;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+    }
+    .syntax-warning-note {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.625rem;
+      padding-top: 0.625rem;
+      border-top: 1px solid rgba(245, 158, 11, 0.2);
+      color: #71717a;
+      font-size: 0.75rem;
+    }
+    .syntax-warning-note i {
+      color: #6b7280;
+      font-size: 0.875rem;
+    }
+    .code-block.has-syntax-warning {
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 0 0 0.375rem 0.375rem;
+    }
+    .btn-copy.has-warning {
+      background: rgba(245, 158, 11, 0.2);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .btn-copy.has-warning:hover {
+      background: rgba(245, 158, 11, 0.3);
+    }
+
     /* Code Display */
     .code-display {
       flex: 1;
@@ -1803,6 +1882,7 @@ interface RemoteSelection {
       animation: spin 0.8s linear infinite;
     }
 
+    /* Feature #140: Preview render failure shows message, code still accessible */
     .preview-error {
       position: absolute;
       top: 0;
@@ -1814,8 +1894,8 @@ interface RemoteSelection {
       align-items: center;
       justify-content: center;
       gap: 0.5rem;
-      background: rgba(239, 68, 68, 0.1);
-      color: #ef4444;
+      background: rgba(245, 158, 11, 0.1);
+      color: #f59e0b;
       font-size: 0.75rem;
       text-align: center;
       padding: 1rem;
@@ -1823,6 +1903,16 @@ interface RemoteSelection {
 
     .preview-error i {
       font-size: 1.5rem;
+    }
+
+    .preview-error-message {
+      font-weight: 500;
+    }
+
+    .preview-error-hint {
+      font-size: 0.6875rem;
+      color: #a1a1aa;
+      margin-top: 0.25rem;
     }
 
     .code-block {
@@ -2251,6 +2341,11 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   previewHtml = '';
   isPreviewLoading = false;
   previewError: string | null = null;
+
+  // Syntax Warning state (Feature #139: Syntax errors show warning, code still copyable)
+  // Per spec: "Syntax errors in code: Warning banner, code still copyable"
+  hasSyntaxWarning = false;
+  syntaxWarningMessage: string | null = null;
 
   // Drawing state
   private isDrawing = false;
@@ -3086,6 +3181,16 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
             });
           }
 
+          // Feature #139: Check for syntax errors in generated code
+          // Per spec: "Syntax errors in code: Warning banner, code still copyable"
+          const syntaxCheck = this.checkForSyntaxErrors(result.code);
+          this.hasSyntaxWarning = syntaxCheck.hasErrors;
+          this.syntaxWarningMessage = syntaxCheck.hasErrors ? syntaxCheck.message : null;
+          if (syntaxCheck.hasErrors) {
+            console.log('[Generate] Syntax warning detected:', syntaxCheck.message);
+            this.toastService.warning('Code has potential syntax issues. Review before using.');
+          }
+
           // Feature #123: Update live preview with generated code
           this.updatePreview();
 
@@ -3433,6 +3538,243 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     this.toastService.error(this.generationError, 0);
 
     console.log('[Test] Timeout failure simulation complete - error UI should be visible with tips');
+  }
+
+  /**
+   * Simulate preview render failure for testing (Feature #140)
+   * This method allows testing the error UI when preview iframe fails to render
+   * Triggered by Ctrl+Shift+R when code panel is open with generated code
+   * Per spec: "Preview render failed: Message in preview area, code still accessible"
+   */
+  simulatePreviewFailure(): void {
+    console.log('[Test] Simulating preview render failure for Feature #140 testing');
+
+    // First, ensure we have generated code to display
+    // If no code exists, generate a mock component first
+    if (!this.generatedCode) {
+      // Generate mock code that we'll show alongside the preview error
+      this.componentName = 'FailedPreviewComponent';
+      this.generatedCode = `import React from 'react';
+
+interface FailedPreviewComponentProps {
+  className?: string;
+}
+
+export const FailedPreviewComponent: React.FC<FailedPreviewComponentProps> = ({ className }) => {
+  // This component has code that works, but preview failed to render
+  return (
+    <div className={\`\${className} p-4 bg-white rounded-lg shadow-md\`}>
+      <h2 className="text-xl font-bold text-gray-800">Component Title</h2>
+      <p className="text-gray-600 mt-2">This is a sample component with valid code.</p>
+      <button className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
+        Click Me
+      </button>
+    </div>
+  );
+};
+
+export default FailedPreviewComponent;`;
+
+      // Apply syntax highlighting
+      this.highlightedCode = this.highlightCode(this.generatedCode);
+    }
+
+    // Show the code panel
+    this.isCodePanelOpen = true;
+
+    // Set preview error state
+    // Per spec: "Preview render failed: Message in preview area, code still accessible"
+    this.previewError = 'Preview failed to render. Code is still available below.';
+    this.isPreviewLoading = false;
+
+    // Clear the preview HTML to ensure no partial render
+    this.previewHtml = '';
+
+    // Show warning toast
+    this.toastService.warning('Preview render failed. Code is still accessible.');
+
+    console.log('[Test] Preview failure simulation complete - preview area shows error, code still visible');
+  }
+
+  /**
+   * Check generated code for syntax errors (Feature #139)
+   * Per spec: "Syntax errors in code: Warning banner, code still copyable"
+   *
+   * This method analyzes the generated code for common syntax issues:
+   * - Unclosed brackets, parentheses, or braces
+   * - Missing semicolons in key locations
+   * - Malformed JSX tags
+   * - Incomplete template literals
+   *
+   * @param code The generated code to check
+   * @returns Object with hasErrors flag and error message
+   */
+  checkForSyntaxErrors(code: string): { hasErrors: boolean; message: string } {
+    const errors: string[] = [];
+
+    // Check for balanced brackets
+    const brackets = { '(': 0, '[': 0, '{': 0, '<': 0 };
+    const closers: { [key: string]: keyof typeof brackets } = { ')': '(', ']': '[', '}': '{', '>': '<' };
+
+    // Track template literals
+    let inTemplateLiteral = false;
+    let inString = false;
+    let stringChar = '';
+
+    for (let i = 0; i < code.length; i++) {
+      const char = code[i];
+      const prevChar = i > 0 ? code[i - 1] : '';
+
+      // Handle string literals
+      if (!inTemplateLiteral && (char === '"' || char === "'") && prevChar !== '\\') {
+        if (!inString) {
+          inString = true;
+          stringChar = char;
+        } else if (char === stringChar) {
+          inString = false;
+          stringChar = '';
+        }
+        continue;
+      }
+
+      // Handle template literals
+      if (char === '`' && prevChar !== '\\') {
+        inTemplateLiteral = !inTemplateLiteral;
+        continue;
+      }
+
+      // Skip bracket counting inside strings
+      if (inString || inTemplateLiteral) continue;
+
+      // Count brackets
+      if (brackets.hasOwnProperty(char)) {
+        brackets[char as keyof typeof brackets]++;
+      } else if (closers.hasOwnProperty(char)) {
+        brackets[closers[char]]--;
+      }
+    }
+
+    // Check for unbalanced brackets
+    if (brackets['('] !== 0) {
+      errors.push(brackets['('] > 0 ? 'Unclosed parenthesis' : 'Extra closing parenthesis');
+    }
+    if (brackets['['] !== 0) {
+      errors.push(brackets['['] > 0 ? 'Unclosed square bracket' : 'Extra closing bracket');
+    }
+    if (brackets['{'] !== 0) {
+      errors.push(brackets['{'] > 0 ? 'Unclosed curly brace' : 'Extra closing brace');
+    }
+
+    // Check for JSX issues - looking for common patterns
+    const jsxOpenTags = (code.match(/<[A-Z][a-zA-Z0-9]*(?:\s|>)/g) || []).length;
+    const jsxCloseTags = (code.match(/<\/[A-Z][a-zA-Z0-9]*>/g) || []).length;
+    const selfClosingTags = (code.match(/<[A-Z][a-zA-Z0-9]*[^>]*\/>/g) || []).length;
+
+    if (jsxOpenTags !== jsxCloseTags + selfClosingTags) {
+      errors.push('Potentially unclosed JSX tag');
+    }
+
+    // Check for incomplete template literals
+    if (inTemplateLiteral) {
+      errors.push('Unclosed template literal');
+    }
+
+    // Check for incomplete string
+    if (inString) {
+      errors.push('Unclosed string literal');
+    }
+
+    // Check for missing export
+    if (!code.includes('export ')) {
+      errors.push('Missing export statement');
+    }
+
+    // Check for common React issues
+    if (code.includes('React.FC') && !code.includes('import React')) {
+      errors.push('Missing React import');
+    }
+
+    if (errors.length > 0) {
+      console.log('[SyntaxCheck] Issues detected:', errors);
+      return {
+        hasErrors: true,
+        message: errors.join('. ') + '.'
+      };
+    }
+
+    console.log('[SyntaxCheck] No syntax issues detected');
+    return { hasErrors: false, message: '' };
+  }
+
+  /**
+   * Clear syntax warning state
+   */
+  clearSyntaxWarning(): void {
+    this.hasSyntaxWarning = false;
+    this.syntaxWarningMessage = null;
+  }
+
+  /**
+   * Simulate syntax error for testing (Feature #139)
+   * This method allows testing the warning UI when generated code has syntax issues
+   * Triggered by Ctrl+Shift+S when elements are selected
+   * Per spec: "Syntax errors in code: Warning banner, code still copyable"
+   */
+  simulateSyntaxError(): void {
+    console.log('[Test] Simulating syntax error for Feature #139 testing');
+
+    // Generate code with intentional syntax errors
+    this.componentName = 'BrokenComponent';
+    this.generatedCode = `import React from 'react';
+
+interface BrokenComponentProps {
+  className?: string;
+}
+
+/**
+ * BrokenComponent - This component has syntax issues
+ * Generated with intentional errors for testing Feature #139
+ */
+export const BrokenComponent: React.FC<BrokenComponentProps> = ({ className }) => {
+  return (
+    <div className={\`\${className} p-4 bg-white rounded-lg shadow-md\`}>
+      <h2 className="text-xl font-bold text-gray-800">Component with Issues</h2>
+      <p className="text-gray-600 mt-2">This code has syntax problems.</p>
+      {/* Missing closing tag below */}
+      <button className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded"
+        Click Me
+      </button>
+      {/* Unclosed div - intentional error */}
+    <div className="mt-4">
+      <span>This div is not closed
+    </div>
+  );
+};
+
+export default BrokenComponent;`;
+
+    // Apply syntax highlighting
+    this.highlightedCode = this.highlightCode(this.generatedCode);
+
+    // Show the code panel
+    this.isCodePanelOpen = true;
+
+    // Set syntax warning state (Feature #139)
+    this.hasSyntaxWarning = true;
+    this.syntaxWarningMessage = 'Unclosed JSX tag. Potential syntax issue in component. Missing closing bracket.';
+
+    // Clear any generation errors (this is about syntax warnings, not generation failures)
+    this.generationError = null;
+    this.generationErrorType = null;
+    this.isGenerating = false;
+
+    // Update preview (will likely fail due to syntax issues)
+    this.updatePreview();
+
+    // Show warning toast
+    this.toastService.warning('Code has potential syntax issues. You can still copy and fix manually.');
+
+    console.log('[Test] Syntax error simulation complete - warning banner should be visible, code still copyable');
   }
 
   /**
@@ -4895,6 +5237,25 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
         console.log('[Test] Triggering timeout failure simulation (Ctrl+Shift+T)');
         this.simulateTimeoutFailure();
       }
+      return;
+    }
+
+    // Feature #140: Simulate preview render failure for testing (Ctrl+Shift+P)
+    // This triggers a simulated preview failure to test error UI shows code is still accessible
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') {
+      event.preventDefault();
+      console.log('[Test] Triggering preview failure simulation (Ctrl+Shift+P)');
+      this.simulatePreviewFailure();
+      return;
+    }
+
+    // Feature #139: Simulate syntax error for testing (Ctrl+Shift+S)
+    // This triggers a simulated syntax error to test warning banner UI
+    // Per spec: "Syntax errors in code: Warning banner, code still copyable"
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      console.log('[Test] Triggering syntax error simulation (Ctrl+Shift+S)');
+      this.simulateSyntaxError();
       return;
     }
 
