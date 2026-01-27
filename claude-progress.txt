@@ -862,3 +862,83 @@ This is an EXTERNAL blocker - cannot be resolved by the coding agent.
 - Frontend running on http://localhost:4200
 - Browser automation working
 - All services operational
+
+---
+
+## Session 15 - 2026-01-27
+
+### Context
+- Assigned Feature #36: "Password reset link is single-use"
+- Description: "Used password reset links cannot be reused"
+- Category: A. Security & Access Control
+
+### What Was Accomplished
+
+1. **Verified Environment**:
+   - Backend running on http://localhost:44326
+   - Frontend running on http://localhost:4200
+   - Both servers responding correctly (200 OK)
+
+2. **Full Feature Verification with Browser Automation**:
+
+   **Step 1: Registered a new test user**
+   - Created user: `test_single_use_36` with email `test_single_use_36@example.com`
+   - Password: `TestPassword123!`
+   - Registration successful, user auto-logged in
+
+   **Step 2: Logged out and requested password reset**
+   - Clicked "Log out" button
+   - Navigated to Forgot Password page
+   - Submitted email: `test_single_use_36@example.com`
+   - Success message: "Account recovery email sent to your e-mail address"
+
+   **Step 3: Retrieved reset token from logs**
+   - Found reset URL in backend logs
+   - Token extracted from ConsoleEmailSender output
+
+   **Step 4: Used reset link to change password**
+   - Navigated to reset URL
+   - Reset Password form displayed
+   - Entered new password: `NewPassword456!`
+   - Confirmed password
+   - Clicked Submit
+   - Success message: "Your password is successfully reset."
+
+   **Step 5: Attempted to reuse the same reset link**
+   - Navigated to the exact same reset URL again
+   - Page showed: **"Invalid token."**
+
+### Feature #36 Verification Checklist
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Request password reset | Email sent | PASS |
+| 2. Use reset link to change password | Password changed successfully | PASS |
+| 3. Try to use the same link again | Token rejected | PASS |
+| 4. Verify error message about invalid/used link | "Invalid token." shown | PASS |
+
+### Screenshots Captured
+- `feature-36-password-reset-success.png` - Success message after first password reset
+- `feature-36-reuse-invalid-token.png` - "Invalid token." error when reusing link
+
+### Technical Notes
+- ABP.io uses ASP.NET Core Identity's DataProtection token provider
+- Reset tokens are cryptographically tied to the user's security stamp
+- When password changes, security stamp is updated, invalidating any existing tokens
+- This is the standard secure pattern for single-use password reset links
+
+### Feature Result
+- **Feature #36: PASSING**
+- All verification steps completed successfully
+- Password reset links are properly single-use
+
+### Current Progress
+- **8/273 features passing** (~2.9%)
+- Password reset security verified
+- ABP provides robust token management out of the box
+
+### Environment Status
+- Backend running on http://localhost:44326
+- Frontend running on http://localhost:4200
+- Browser automation working
+- All services operational
