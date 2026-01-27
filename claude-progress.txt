@@ -2665,3 +2665,56 @@ to the next month first day.
   - feature-19-login-success-dashboard.png - Dashboard after successful login
 - Console errors: Only cookie SameSite warning (dev environment, not functional issue)
 - Feature verified working correctly - no regression
+[Testing] 2026-01-28T00:17:32+01:00 - Feature #43 regression test completed
+- Feature: Dashboard search filters boards by name
+- Category: L. Search & Filter
+- Status: PASSING (no regression found)
+- Verification steps completed:
+  1. ✅ Navigate to dashboard - Logged in and accessed dashboard with 50 boards
+  2. ✅ Type 'Alpha' in search input - Search input accepts text, filters in real-time
+  3. ✅ Verify only 'Alpha' board displayed - Only 'Alpha' board appears when filtered
+  4. ✅ Clear search - Clicked 'Clear search' button
+  5. ✅ Verify all boards displayed - All 50 boards visible again
+- Screenshots captured:
+  - feature-43-search-alpha.png - Dashboard filtered to show only Alpha board
+  - feature-43-search-cleared.png - Dashboard showing all boards after clearing search
+- Console errors: Only cookie SameSite warning (dev environment, not functional issue)
+- Feature verified working correctly - no regression
+
+=== Session: Feature #147 - Guest Sees Registration Prompt ===
+Date: 2026-01-28
+
+## Feature Verified
+- Feature #147: Guest sees registration prompt
+- Description: Prompts encourage guests to register
+- Category: N. Feedback & Notification
+- Status: PASSED
+
+## Implementation Summary
+The feature was already implemented. This session verified through browser testing.
+
+### Key Components (canvas.component.ts)
+1. Guest Registration Prompt UI (template line 671) - Subtle banner with star icon
+2. CSS Styles (lines 1026-1108) - Glassmorphism styling with slide-up animation
+3. Component State (lines 2400-2403) - isGuestPromptDismissed flag
+4. Methods (lines 6311-6341) - dismissGuestPrompt() and loadGuestPromptState()
+
+### Behavior
+- Prompt appears only for guest users
+- Dismissing stores timestamp + 24 hours in localStorage
+- Prompt reappears after 24 hours
+
+## Verification Steps Completed
+1. Join board as guest - Joined via share link as TestGuest147
+2. Verify subtle prompt to register appears - Prompt visible at bottom
+3. Verify benefits mentioned - Listed: unlimited boards, 30 monthly AI generations
+4. Verify prompt is not obtrusive - Can be dismissed, does not block canvas
+
+## Screenshots
+- feature-147-guest-prompt-visible.png
+- feature-147-prompt-dismissed.png
+
+## Current Progress
+- Features passing: 119/273 (43.6%)
+- Feature #147 marked as passing
+
