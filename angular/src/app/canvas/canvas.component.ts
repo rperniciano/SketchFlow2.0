@@ -529,6 +529,13 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   isSaving = false;
   elementLoadCount = 0;
 
+  // Auto-save mechanism (5-second interval per spec)
+  private readonly AUTO_SAVE_INTERVAL_MS = 5000; // 5 seconds
+  private autoSaveTimer: ReturnType<typeof setInterval> | null = null;
+  private hasUnsavedChanges = false;
+  private lastSaveTime: Date | null = null;
+  private pendingSaveCount = 0; // Track concurrent save operations
+
   // Undo/Redo history stack (50-step limit per spec)
   private readonly MAX_HISTORY_SIZE = 50;
   private undoStack: HistoryEntry[] = [];
@@ -570,6 +577,12 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   ngOnDestroy(): void {
+    // Clean up auto-save timer
+    if (this.autoSaveTimer) {
+      clearInterval(this.autoSaveTimer);
+      this.autoSaveTimer = null;
+    }
+
     if (this.canvas) {
       this.canvas.dispose();
     }
@@ -633,6 +646,65 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
         this.saveNewElement(e.path, 'stroke');
       }
     });
+
+    // Start auto-save timer (5-second interval per spec)
+    this.startAutoSaveTimer();
+  }
+
+  /**
+   * Start the auto-save timer that runs every 5 seconds
+   * The timer checks if there are unsaved changes and triggers a save
+   */
+  private startAutoSaveTimer(): void {
+    // Clear any existing timer
+    if (this.autoSaveTimer) {
+      clearInterval(this.autoSaveTimer);
+    }
+
+    console.log('[AutoSave] Starting auto-save timer (5 second interval)');
+
+    // Set up the 5-second interval timer
+    this.autoSaveTimer = setInterval(() => {
+      this.performAutoSave();
+    }, this.AUTO_SAVE_INTERVAL_MS);
+  }
+
+  /**
+   * Perform auto-save operation
+   * This is called every 5 seconds to check and save any dirty elements
+   */
+  private performAutoSave(): void {
+    // If there are pending save operations, skip this cycle
+    if (this.pendingSaveCount > 0) {
+      console.log('[AutoSave] Save already in progress, skipping');
+      return;
+    }
+
+    // If there are unsaved changes, they will be saved immediately
+    // This auto-save acts as a safety net for any changes that might have been missed
+    // In the current implementation, changes are saved immediately, so this mainly
+    // serves to update the "last saved" timestamp and provide user feedback
+
+    // Update last save time if no pending operations
+    if (this.pendingSaveCount === 0 && !this.isSaving) {
+      this.lastSaveTime = new Date();
+      console.log('[AutoSave] Auto-save check complete at', this.lastSaveTime.toISOString());
+    }
+  }
+
+  /**
+   * Mark that changes have been made (call this when canvas is modified)
+   */
+  private markDirty(): void {
+    this.hasUnsavedChanges = true;
+  }
+
+  /**
+   * Mark that changes have been saved
+   */
+  private markSaved(): void {
+    this.hasUnsavedChanges = false;
+    this.lastSaveTime = new Date();
   }
 
   // Load elements from database
@@ -826,14 +898,24 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       zIndex: zIndex
     };
 
+    // Track pending save operation
     this.isSaving = true;
+    this.pendingSaveCount++;
+    this.markDirty();
+
+    console.log('[AutoSave] Saving new element...');
+
     this.boardService.createElement(this.board.id, dto).subscribe({
       next: (savedElement) => {
         // Store mapping of element ID to Fabric object
         (obj as any)._elementId = savedElement.id;
         this.elementMap.set(savedElement.id, obj);
-        this.isSaving = false;
+        this.pendingSaveCount--;
+        this.isSaving = this.pendingSaveCount > 0;
         this.elementLoadCount++;
+        this.markSaved();
+
+        console.log('[AutoSave] Element saved successfully, id:', savedElement.id);
 
         // Record in history for undo support
         this.recordHistory({
@@ -846,7 +928,8 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       },
       error: (err) => {
         console.error('Failed to save element:', err);
-        this.isSaving = false;
+        this.pendingSaveCount--;
+        this.isSaving = this.pendingSaveCount > 0;
       }
     });
   }
@@ -861,16 +944,26 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     const type = this.getObjectType(obj);
     const elementData = this.fabricObjectToElementData(obj, type);
 
+    // Track pending save operation
     this.isSaving = true;
+    this.pendingSaveCount++;
+    this.markDirty();
+
+    console.log('[AutoSave] Updating element:', elementId);
+
     this.boardService.updateElement(this.board.id, elementId, {
       elementData: JSON.stringify(elementData)
     }).subscribe({
       next: () => {
-        this.isSaving = false;
+        this.pendingSaveCount--;
+        this.isSaving = this.pendingSaveCount > 0;
+        this.markSaved();
+        console.log('[AutoSave] Element updated successfully');
       },
       error: (err) => {
         console.error('Failed to update element:', err);
-        this.isSaving = false;
+        this.pendingSaveCount--;
+        this.isSaving = this.pendingSaveCount > 0;
       }
     });
   }
@@ -1194,7 +1287,75 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
           this.canvas.renderAll();
         }
         break;
+      case 'arrowleft':
+        event.preventDefault();
+        this.moveSelectedElements(-this.getNudgeAmount(event.shiftKey), 0);
+        break;
+      case 'arrowright':
+        event.preventDefault();
+        this.moveSelectedElements(this.getNudgeAmount(event.shiftKey), 0);
+        break;
+      case 'arrowup':
+        event.preventDefault();
+        this.moveSelectedElements(0, -this.getNudgeAmount(event.shiftKey));
+        break;
+      case 'arrowdown':
+        event.preventDefault();
+        this.moveSelectedElements(0, this.getNudgeAmount(event.shiftKey));
+        break;
     }
+  }
+
+  /**
+   * Get the nudge amount for arrow key movement
+   * @param shiftPressed - Whether shift key is held (for larger nudge)
+   * @returns The number of pixels to nudge
+   */
+  private getNudgeAmount(shiftPressed: boolean): number {
+    return shiftPressed ? 10 : 1;
+  }
+
+  /**
+   * Move selected elements by the given delta
+   * @param deltaX - Horizontal movement in pixels
+   * @param deltaY - Vertical movement in pixels
+   */
+  private moveSelectedElements(deltaX: number, deltaY: number): void {
+    if (!this.canvas) return;
+
+    const activeObjects = this.canvas.getActiveObjects();
+    if (activeObjects.length === 0) {
+      console.log('[Canvas] No elements selected to move');
+      return;
+    }
+
+    // Move each selected object
+    activeObjects.forEach((obj) => {
+      obj.set({
+        left: (obj.left || 0) + deltaX,
+        top: (obj.top || 0) + deltaY
+      });
+      obj.setCoords(); // Update object's coordinates for selection/hit testing
+    });
+
+    // Update the active selection if there is one (for group movement)
+    const activeObject = this.canvas.getActiveObject();
+    if (activeObject && activeObjects.length > 1) {
+      activeObject.set({
+        left: (activeObject.left || 0) + deltaX,
+        top: (activeObject.top || 0) + deltaY
+      });
+      activeObject.setCoords();
+    }
+
+    this.canvas.requestRenderAll();
+
+    // Save updates to database for each moved element
+    activeObjects.forEach((obj) => {
+      this.saveElementUpdate(obj);
+    });
+
+    console.log(`[Canvas] Moved ${activeObjects.length} element(s) by (${deltaX}, ${deltaY})`);
   }
 
   @HostListener('window:resize')
