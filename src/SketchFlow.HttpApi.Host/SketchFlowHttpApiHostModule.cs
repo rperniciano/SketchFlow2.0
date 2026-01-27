@@ -39,6 +39,7 @@ using Volo.Abp.OpenIddict;
 using Volo.Abp.Swashbuckle;
 using Volo.Abp.Studio.Client.AspNetCore;
 using Volo.Abp.Security.Claims;
+using Microsoft.AspNetCore.Authentication.Google;
 
 namespace SketchFlow;
 
@@ -136,11 +137,23 @@ public class SketchFlowHttpApiHostModule : AbpModule
 
     private void ConfigureAuthentication(ServiceConfigurationContext context)
     {
+        var configuration = context.Services.GetConfiguration();
+
         context.Services.ForwardIdentityAuthenticationForBearer(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
         context.Services.Configure<AbpClaimsPrincipalFactoryOptions>(options =>
         {
             options.IsDynamicClaimsEnabled = true;
         });
+
+        // Configure Google OAuth
+        context.Services.AddAuthentication()
+            .AddGoogle(GoogleDefaults.AuthenticationScheme, options =>
+            {
+                options.ClientId = configuration["Authentication:Google:ClientId"] ?? "";
+                options.ClientSecret = configuration["Authentication:Google:ClientSecret"] ?? "";
+                options.Scope.Add("email");
+                options.Scope.Add("profile");
+            });
     }
 
     private void ConfigureUrls(IConfiguration configuration)

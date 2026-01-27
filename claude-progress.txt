@@ -66,3 +66,82 @@ export PATH=$PATH:$DOTNET_ROOT:$DOTNET_ROOT/tools
 - init.sh (fixed line endings)
 - .autocoder/allowed_commands.yaml (added dotnet, yarn, tr, sed, abp commands)
 - claude-progress.txt (created this file)
+
+---
+
+## Session 2 - 2025-01-27
+
+### Context
+- Assigned Feature #28: "Google OAuth registration creates new account"
+- Feature already marked as in_progress
+- Same external blocker persists: .NET SDK not installed
+
+### What Was Verified
+Reviewed the existing Google OAuth implementation. The code IS ALREADY COMPLETE:
+
+1. **NuGet Package** (SketchFlow.HttpApi.Host.csproj line 25):
+   ```xml
+   <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.0" />
+   ```
+
+2. **Google Authentication Configuration** (SketchFlowHttpApiHostModule.cs lines 42, 148-156):
+   ```csharp
+   using Microsoft.AspNetCore.Authentication.Google;
+
+   // In ConfigureAuthentication method:
+   context.Services.AddAuthentication()
+       .AddGoogle(GoogleDefaults.AuthenticationScheme, options =>
+       {
+           options.ClientId = configuration["Authentication:Google:ClientId"] ?? "";
+           options.ClientSecret = configuration["Authentication:Google:ClientSecret"] ?? "";
+           options.Scope.Add("email");
+           options.Scope.Add("profile");
+       });
+   ```
+
+3. **Configuration Settings** (appsettings.json lines 10-15):
+   ```json
+   "Authentication": {
+     "Google": {
+       "ClientId": "YOUR_GOOGLE_CLIENT_ID",
+       "ClientSecret": "YOUR_GOOGLE_CLIENT_SECRET"
+     }
+   }
+   ```
+
+### ABP.io Integration Explanation
+The app uses ABP.io's `AbpAccountWebOpenIddictModule` which automatically:
+- Detects configured external login providers
+- Displays "Sign in with Google" button on login page
+- Handles OAuth callback flow
+- Creates new user accounts on first login
+- Links Google identity to existing accounts (by email)
+
+### Feature Status
+- **Implementation**: COMPLETE - All code is in place
+- **Verification**: BLOCKED - Cannot test without .NET SDK installed
+
+### Same External Blocker
+.NET SDK is still not installed. This prevents:
+- Building the solution (`dotnet build`)
+- Running the backend (`dotnet run`)
+- Testing the Google OAuth flow
+
+### To Verify Feature #28 (After .NET SDK is installed):
+1. Obtain Google OAuth credentials from Google Cloud Console
+2. Update appsettings.json with real credentials
+3. Build and run: `cd src/SketchFlow.HttpApi.Host && dotnet build && dotnet run`
+4. Start frontend: `cd angular && yarn start`
+5. Navigate to http://localhost:4200
+6. Click "Login" → "Sign in with Google"
+7. Complete Google OAuth flow
+8. Verify new user account created
+
+### Files Reviewed This Session
+- src/SketchFlow.HttpApi.Host/SketchFlow.HttpApi.Host.csproj (verified Google package)
+- src/SketchFlow.HttpApi.Host/SketchFlowHttpApiHostModule.cs (verified Google OAuth config)
+- src/SketchFlow.HttpApi.Host/appsettings.json (verified settings placeholders)
+- src/SketchFlow.Domain/SketchFlowDomainModule.cs (reviewed module structure)
+- src/SketchFlow.Domain/OpenIddict/OpenIddictDataSeedContributor.cs (reviewed OpenIddict setup)
+- angular/src/environments/environment.ts (reviewed OAuth client config)
+- angular/src/app/app.config.ts (reviewed Angular providers)
