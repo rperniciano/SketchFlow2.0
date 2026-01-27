@@ -2478,3 +2478,90 @@ The case-insensitive search was already implemented:
 - Frontend running on http://localhost:4200
 - Browser automation working
 - All services operational
+
+
+---
+
+## Session - 2026-01-27 (Feature #50 - User can restore board from trash)
+
+### Context
+- Assigned Feature #50: "User can restore board from trash"
+- Description: Deleted board can be restored from trash
+- Category: D. Workflow Completeness
+
+### What Was Accomplished
+
+1. **Fixed Backend RestoreAsync Implementation**:
+   - Added IDataFilter dependency to BoardAppService
+   - Implemented RestoreAsync() to properly restore soft-deleted boards
+   - Used _dataFilter.Disable<ISoftDelete>() to query deleted boards
+   - Set IsDeleted=false via reflection to restore boards
+
+2. **Fixed GetTrashAsync Implementation**:
+   - Was returning empty list due to soft-delete filter
+   - Now properly disables ISoftDelete filter to query deleted boards
+   - Returns boards where OwnerId matches and IsDeleted=true
+   - Sorts by DeletionTime descending (most recently deleted first)
+
+3. **Verified Complete Restore Flow**:
+   - Created test user: restore_test_user50
+   - Created test board: RESTORE_TEST_BOARD_V2
+   - Deleted board (soft delete) - confirmed Trash tab shows count 1
+   - Navigated to Trash tab - saw deleted board
+   - Clicked restore button - board restored
+   - Verified board reappears in My Boards tab
+
+### Feature #50 Verification Checklist
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Soft delete a board | Board removed from main list | PASS |
+| 2. Navigate to trash tab | Trash tab loads | PASS |
+| 3. Find the deleted board | Board visible in trash | PASS |
+| 4. Click restore option | Restore action executes | PASS |
+| 5. Verify board disappears from trash | Trash count decreases | PASS |
+| 6. Navigate to main boards tab | Tab loads | PASS |
+| 7. Verify board appears in main list | Board visible with data | PASS |
+
+### Console Errors
+- None
+
+### Screenshots Captured
+- feature50-step1-initial.png - Initial landing page
+- feature50-step2-board-created.png - Board created, on canvas page
+- feature50-step3-board-deleted.png - Board deleted, empty state shown
+- feature50-step4-trash-view.png - Trash tab with 2 deleted boards
+- feature50-step5-after-restore-trash.png - Trash after restore (1 board remaining)
+- feature50-step6-board-restored.png - My Boards tab with restored board
+
+### Technical Details
+- Backend uses ABP's IDataFilter to disable ISoftDelete filter
+- Restore sets IsDeleted=false via reflection (ABP property is not directly settable)
+- Frontend properly calls restore API endpoint: POST /api/app/board/{id}/restore
+- Optimistic UI updates both trashedBoards and boards arrays
+
+### Files Modified
+- src/SketchFlow.Application/Boards/BoardAppService.cs - RestoreAsync, GetTrashAsync, PermanentDeleteAsync
+- src/SketchFlow.Application.Contracts/Boards/IBoardAppService.cs - Interface updates
+- angular/src/app/dashboard/dashboard.component.ts - restore functionality
+- angular/src/app/dashboard/dashboard.component.html - trash tab UI
+- angular/src/app/shared/services/board.service.ts - restore API call
+
+### Git Commit
+- Commit 07b7022: "feat: implement board restore from trash - Feature #50"
+
+### Feature Result
+- **Feature #50: PASSING**
+- All verification steps completed successfully
+- Board restore from trash works correctly end-to-end
+
+### Current Progress
+- **22/273 features passing** (~8.1%)
+- Board restore functionality verified and working
+
+### Environment Status
+- Backend running on http://localhost:44329
+- Frontend running on http://localhost:4200
+- Browser automation working
+- All services operational
+
