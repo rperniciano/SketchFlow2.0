@@ -1888,3 +1888,46 @@ Session verified the full functionality through browser automation testing.
 - Features passing: 104/273 (38.1%)
 - Feature #126 marked as passing
 
+=== Session: Feature #127 - Placeholders Toggle Affects Generation ===
+Date: 2026-01-27
+
+## Feature Implemented
+- Feature #127: "Placeholders toggle affects generation"
+- Description: "Toggle for placeholder text affects output"
+- Category: D. Workflow Completeness
+- Status: PASSED
+
+## Implementation Summary
+
+### Canvas Component Changes
+1. Added state properties: responsiveOption (default true), includePlaceholdersOption (default false)
+2. Added toggle UI controls in code panel with custom slider styling
+3. Added onOptionChange method for logging toggle changes
+4. Updated generation call to pass both options to service
+5. Added CSS for toggle switches with accessibility support
+
+### Generation Service Changes
+1. Updated generateComponentMock to extract and pass options
+2. Updated createMockResult signature to accept includePlaceholders parameter
+3. Modified createResponsiveCode and createNonResponsiveCode:
+   - When includePlaceholders=true: Uses placeholder text like "[Title Placeholder]", "[Lorem ipsum...]"
+   - When includePlaceholders=false: Uses regular text like "Component Title"
+   - Adds code comment annotation when placeholders enabled
+
+## Verification Steps Completed
+1. Generated with Placeholders DISABLED - verified regular text output
+2. Enabled toggle and regenerated - verified placeholder text:
+   - "[Title Placeholder]", "[Subtitle placeholder text]"
+   - "[Lorem ipsum dolor sit amet...]"
+   - "[Primary Button]" / "[Secondary Button]"
+3. Disabled toggle and regenerated - verified regular text restored
+4. Screenshots captured for both states
+
+## Screenshots
+- feature-127-placeholders-enabled.png
+- feature-127-placeholders-disabled.png
+
+## Current Progress
+- Features passing: 105/273 (38.5%)
+- Feature #127 marked as passing
+
