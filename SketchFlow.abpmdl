@@ -1,0 +1,104 @@
+{
+  "template": "app",
+  "imports": {
+    "Volo.Abp.LeptonXLiteTheme": {
+      "version": "5.0.2",
+      "isInstalled": true,
+      "creationTime": "01/26/2026 15:04:16 +00:00"
+    },
+    "Volo.Abp.Account": {
+      "version": "10.0.2",
+      "isInstalled": true,
+      "creationTime": "01/26/2026 15:04:16 +00:00"
+    },
+    "Volo.Abp.OpenIddict": {
+      "version": "10.0.2",
+      "isInstalled": true,
+      "creationTime": "01/26/2026 15:04:16 +00:00"
+    },
+    "Volo.Abp.Identity": {
+      "version": "10.0.2",
+      "isInstalled": true,
+      "creationTime": "01/26/2026 15:04:16 +00:00"
+    },
+    "Volo.Abp.SettingManagement": {
+      "version": "10.0.2",
+      "isInstalled": true,
+      "creationTime": "01/26/2026 15:04:16 +00:00"
+    },
+    "Volo.Abp.PermissionManagement": {
+      "version": "10.0.2",
+      "isInstalled": true,
+      "creationTime": "01/26/2026 15:04:16 +00:00"
+    },
+    "Volo.Abp.FeatureManagement": {
+      "version": "10.0.2",
+      "isInstalled": true,
+      "creationTime": "01/26/2026 15:04:16 +00:00"
+    }
+  },
+  "folders": {
+    "items": {
+      "src": {},
+      "test": {}
+    }
+  },
+  "packages": {
+    "SketchFlow.Application": {
+      "path": "src/SketchFlow.Application/SketchFlow.Application.abppkg",
+      "folder": "src"
+    },
+    "SketchFlow.Application.Tests": {
+      "path": "test/SketchFlow.Application.Tests/SketchFlow.Application.Tests.abppkg",
+      "folder": "test"
+    },
+    "SketchFlow.Domain.Shared": {
+      "path": "src/SketchFlow.Domain.Shared/SketchFlow.Domain.Shared.abppkg",
+      "folder": "src"
+    },
+    "SketchFlow.Application.Contracts": {
+      "path": "src/SketchFlow.Application.Contracts/SketchFlow.Application.Contracts.abppkg",
+      "folder": "src"
+    },
+    "SketchFlow.HttpApi": {
+      "path": "src/SketchFlow.HttpApi/SketchFlow.HttpApi.abppkg",
+      "folder": "src"
+    },
+    "SketchFlow.HttpApi.Client": {
+      "path": "src/SketchFlow.HttpApi.Client/SketchFlow.HttpApi.Client.abppkg",
+      "folder": "src"
+    },
+    "SketchFlow.EntityFrameworkCore.Tests": {
+      "path": "test/SketchFlow.EntityFrameworkCore.Tests/SketchFlow.EntityFrameworkCore.Tests.abppkg",
+      "folder": "test"
+    },
+    "SketchFlow.EntityFrameworkCore": {
+      "path": "src/SketchFlow.EntityFrameworkCore/SketchFlow.EntityFrameworkCore.abppkg",
+      "folder": "src"
+    },
+    "SketchFlow.TestBase": {
+      "path": "test/SketchFlow.TestBase/SketchFlow.TestBase.abppkg",
+      "folder": "test"
+    },
+    "SketchFlow.Domain.Tests": {
+      "path": "test/SketchFlow.Domain.Tests/SketchFlow.Domain.Tests.abppkg",
+      "folder": "test"
+    },
+    "SketchFlow.HttpApi.Client.ConsoleTestApp": {
+      "path": "test/SketchFlow.HttpApi.Client.ConsoleTestApp/SketchFlow.HttpApi.Client.ConsoleTestApp.abppkg",
+      "folder": "test"
+    },
+    "SketchFlow.DbMigrator": {
+      "path": "src/SketchFlow.DbMigrator/SketchFlow.DbMigrator.abppkg",
+      "folder": "src"
+    },
+    "SketchFlow.HttpApi.Host": {
+      "path": "src/SketchFlow.HttpApi.Host/SketchFlow.HttpApi.Host.abppkg",
+      "folder": "src"
+    },
+    "SketchFlow.Domain": {
+      "path": "src/SketchFlow.Domain/SketchFlow.Domain.abppkg",
+      "folder": "src"
+    }
+  }
+}

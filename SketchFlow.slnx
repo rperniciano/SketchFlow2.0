@@ -1,0 +1,23 @@
+<Solution>
+    <Configurations>
+        <Platform Name="Any CPU" />
+    </Configurations>
+    <Folder Name="/src/">
+        <Project Path="src/SketchFlow.Domain/SketchFlow.Domain.csproj" />
+        <Project Path="src/SketchFlow.Application/SketchFlow.Application.csproj" />
+        <Project Path="src/SketchFlow.EntityFrameworkCore/SketchFlow.EntityFrameworkCore.csproj" />
+        <Project Path="src/SketchFlow.Domain.Shared/SketchFlow.Domain.Shared.csproj" />
+        <Project Path="src/SketchFlow.Application.Contracts/SketchFlow.Application.Contracts.csproj" />
+        <Project Path="src/SketchFlow.HttpApi/SketchFlow.HttpApi.csproj" />
+        <Project Path="src/SketchFlow.HttpApi.Client/SketchFlow.HttpApi.Client.csproj" />
+        <Project Path="src/SketchFlow.DbMigrator/SketchFlow.DbMigrator.csproj" />
+        <Project Path="src/SketchFlow.HttpApi.Host/SketchFlow.HttpApi.Host.csproj" />
+    </Folder>
+    <Folder Name="/test/">
+        <Project Path="test/SketchFlow.Application.Tests/SketchFlow.Application.Tests.csproj" />
+        <Project Path="test/SketchFlow.EntityFrameworkCore.Tests/SketchFlow.EntityFrameworkCore.Tests.csproj" />
+        <Project Path="test/SketchFlow.TestBase/SketchFlow.TestBase.csproj" />
+        <Project Path="test/SketchFlow.Domain.Tests/SketchFlow.Domain.Tests.csproj" />
+        <Project Path="test/SketchFlow.HttpApi.Client.ConsoleTestApp/SketchFlow.HttpApi.Client.ConsoleTestApp.csproj" />
+    </Folder>
+</Solution>
