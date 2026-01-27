@@ -40,6 +40,7 @@ using Volo.Abp.Swashbuckle;
 using Volo.Abp.Studio.Client.AspNetCore;
 using Volo.Abp.Security.Claims;
 using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.Identity;
 
 namespace SketchFlow;
 
@@ -143,6 +144,15 @@ public class SketchFlowHttpApiHostModule : AbpModule
         context.Services.Configure<AbpClaimsPrincipalFactoryOptions>(options =>
         {
             options.IsDynamicClaimsEnabled = true;
+        });
+
+        // Configure SecurityStamp validation to invalidate sessions on password reset
+        // This ensures that when a user changes their password, all existing sessions are invalidated
+        context.Services.Configure<SecurityStampValidatorOptions>(options =>
+        {
+            // Check security stamp every 30 seconds (for immediate session invalidation)
+            // In production, you might want to increase this to reduce database load
+            options.ValidationInterval = TimeSpan.FromSeconds(30);
         });
 
         // Configure Google OAuth
