@@ -77,6 +77,13 @@ interface Participant {
   isSelf: boolean;   // True if this is the current user
 }
 
+// Interface for remote selection tracking (Feature #115: Selection highlight visible to other users)
+interface RemoteSelection {
+  connectionId: string;
+  elementIds: string[];
+  color: string;    // The user's cursor color for the highlight
+}
+
 @Component({
   selector: 'app-canvas',
   standalone: true,
@@ -1211,6 +1218,12 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   // Participant panel state (Feature #114: Participant panel shows all connected users)
   isParticipantPanelOpen = false;
 
+  // Remote selections state (Feature #115: Selection highlight visible to other users)
+  // Maps connectionId to their selected element IDs and highlight color
+  private remoteSelections: Map<string, RemoteSelection> = new Map();
+  // Stores highlight rectangles for remote selections (elementId -> fabric.Rect)
+  private remoteSelectionHighlights: Map<string, fabric.FabricObject> = new Map();
+
   colors: CanvasColors[] = [
     { name: 'Black', value: '#000000' },
     { name: 'White', value: '#ffffff' },
@@ -1334,16 +1347,20 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     });
 
     // Set up selection event handlers
+    // Feature #115: Selection highlight visible to other users - broadcast selection changes
     this.canvas.on('selection:created', (e) => {
       this.selectedElementCount = e.selected?.length || 0;
+      this.broadcastSelectionChange(e.selected || []);
     });
 
     this.canvas.on('selection:updated', (e) => {
       this.selectedElementCount = e.selected?.length || 0;
+      this.broadcastSelectionChange(e.selected || []);
     });
 
     this.canvas.on('selection:cleared', () => {
       this.selectedElementCount = 0;
+      this.broadcastSelectionChange([]);
     });
 
     // Set up drawing handlers

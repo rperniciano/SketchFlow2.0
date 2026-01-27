@@ -824,3 +824,69 @@ Added toast notification in OnParticipantJoined event handler in setupCursorEven
 - Features passing: 83/273 (30.4%)
 - Feature #111 marked as passing
 
+
+=== Session: Feature #114 - Participant Panel Shows All Connected Users ===
+Date: 2026-01-27
+
+## Feature Implemented
+- Feature #114: "Participant panel shows all connected users"
+- Description: "Panel lists all participants with status"
+- Category: D. Workflow Completeness
+- Status: PASSED ✓
+
+## Implementation Summary
+
+### Template Changes (canvas.component.ts)
+1. **Participant Avatars Wrapper** - Made clickable button to toggle panel
+   - `participant-avatars-btn` with aria attributes for accessibility
+   - Shows up to 5 participant avatars + overflow count
+
+2. **Participant Panel** - Slide-down dialog showing all users
+   - Header with "Participants" title and count badge
+   - Empty state: "Just you here" + "Share this board to collaborate" hint
+   - Participant list with avatar, name, "(You)" indicator, and "Online" status
+   - Backdrop for closing panel on outside click
+
+### Styles Added (~180 lines)
+- `.participant-avatars-wrapper` - positioning container
+- `.participant-avatars-btn` - transparent clickable button
+- `.participant-panel` - glassmorphism dropdown panel
+- `.participant-panel-header` - title and count
+- `.participant-panel-empty` - empty state styling
+- `.participant-panel-list` - scrollable user list
+- `.participant-item` - individual user row
+- `.participant-item-avatar` - colored initials avatar
+- `.participant-item-status.online` - green dot + "Online" text
+- `.participant-panel-backdrop` - click-to-close backdrop
+
+### Component Class Changes
+1. **Property Added**
+   - `isParticipantPanelOpen = false` - tracks panel visibility
+
+2. **Method Made Public**
+   - `getAllParticipants()` - changed from private to public for template access
+
+3. **New Methods**
+   - `toggleParticipantPanel()` - opens/closes panel
+   - `closeParticipantPanel()` - closes panel (for backdrop click)
+
+## Verification Steps Completed
+1. ✅ Open board with multiple users - Board had 2 connected users
+2. ✅ Open participant panel - Panel opens on avatar click
+3. ✅ Verify all users are listed - Both "admin (You)" and "User" shown
+4. ✅ Verify names/colors are correct - Names and colored avatars correct
+5. ✅ Verify online status indicators shown - Green "Online" dots visible
+
+## Screenshots Captured
+- feature-114-participant-panel-single-user.png - Solo user view with empty state
+- feature-114-participant-panel-multi-user.png - Multi-user view with 2 participants
+
+## Console Logs
+- [Participants] Panel toggled: open
+- [Participants] Panel closed
+
+## Current Progress
+- Features passing: 85/273 (31.1%)
+- Feature #114 marked as passing
+
+---
