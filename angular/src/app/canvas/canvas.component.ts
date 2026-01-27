@@ -3101,6 +3101,7 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     this.isGenerating = true;
     this.generationError = null;
     this.generationErrorType = null; // Feature #136: Clear error type on new generation
+    this.clearSyntaxWarning(); // Feature #139: Clear syntax warning on new generation
 
     // Step 2: Show loading toast
     this.toastService.info('Exporting selection and preparing for AI analysis...', 3000);
@@ -3475,6 +3476,7 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     console.log('[CodePanel] Retrying generation...');
     this.generationError = null;
     this.generationErrorType = null; // Feature #136: Clear error type
+    this.clearSyntaxWarning(); // Feature #139: Clear syntax warning on retry
     this.onGenerateComponent();
   }
 
@@ -3488,6 +3490,7 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     this.generatedCode = '';
     this.generationError = null;
     this.generationErrorType = null; // Feature #136: Clear error type
+    this.clearSyntaxWarning(); // Feature #139: Clear syntax warning on regenerate
     this.onGenerateComponent();
   }
 
@@ -5256,6 +5259,15 @@ export default BrokenComponent;`;
       event.preventDefault();
       console.log('[Test] Triggering syntax error simulation (Ctrl+Shift+S)');
       this.simulateSyntaxError();
+      return;
+    }
+
+    // Feature #135: Test quota reset on first of month (Ctrl+Shift+Q)
+    // This simulates quota expiration and triggers reset to verify the feature
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'q') {
+      event.preventDefault();
+      console.log('[Test] Triggering quota reset test (Ctrl+Shift+Q)');
+      this.testQuotaReset();
       return;
     }
 
