@@ -6333,3 +6333,123 @@ Feature #95 uses Fabric.js built-in viewport culling through the skipOffscreen: 
 - Viewport culling verified through comprehensive code review
 
 [Testing] Feature #95 verified - passing. Viewport culling via skipOffscreen: true properly hides off-screen elements.
+
+---
+
+## Session - 2026-01-27 (Feature #2 - Landing page renders correctly - REGRESSION TEST)
+
+### Context
+- Assigned Feature #2: 'Landing page renders correctly'
+- Description: The landing page displays all expected sections with proper styling
+- Category: B. Navigation Integrity
+- Status at start: Was marked as passing
+
+### Regression Found
+The landing page was showing an error: Http failure response for https://localhost:44325/.well-known/openid-configuration: 0 undefined
+
+Root Cause: The Angular app was configured to use HTTPS (port 44325) but the browser blocked the connection due to self-signed SSL certificate issues in WSL2 environment. The backend actually serves HTTP on port 44326.
+
+### Fix Applied
+1. Updated angular/src/environments/environment.ts:
+   - Changed issuer and API URL from https://localhost:44325 to http://localhost:44326
+   - Added skipIssuerCheck: true and strictDiscoveryDocumentValidation: false
+
+2. Updated src/SketchFlow.HttpApi.Host/appsettings.json:
+   - Added http://localhost:44326 to CORS origins
+
+### Verification Results (via Browser Automation)
+- Navigate to root URL: PASS
+- Hero section with tagline and CTAs: PASS
+- Static illustration visible: PASS
+- Features section shows 3 cards (Collaborate, Generate, Ship): PASS
+- CTA section with registration prompt: PASS
+- Footer with links: PASS
+- Dark theme with glassmorphism aesthetic: PASS
+
+### Console Errors
+- None (only Angular dev mode info log)
+
+### Feature Result
+- Feature #2: REGRESSION FIXED AND VERIFIED PASSING
+- All 7 verification steps pass via browser automation
+- Screenshot captured: feature2-landing-page-fix.png
+
+### Commit
+- b3f1b04: fix: Switch to HTTP for development to fix landing page regression
+
+[Testing] Feature #2 regression fixed - landing page now renders correctly using HTTP endpoint.
+
+
+---
+
+## Session - 2026-01-27 (Feature #52 - Trash empty state displays when empty - REGRESSION TEST)
+
+### Context
+- Assigned Feature #52: 'Trash empty state displays when empty'
+- Description: Empty trash shows appropriate message
+- Category: H. Empty States
+- Status at start: Already passing (passes: true, in_progress: false)
+
+### Environment Status
+- Frontend running on http://localhost:4200
+- Backend running on http://localhost:44326
+- Browser automation working correctly
+
+### Verification Method
+Tested via browser automation with a new test user (trashtest52) to ensure a clean trash state.
+
+### Verification Steps
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Log in as user with no deleted boards | User logged in | PASS - Created new user trashtest52 |
+| 2. Navigate to trash tab | Trash tab active | PASS |
+| 3. Verify 'Trash is empty' message displays | Heading shown | PASS - 'Trash is Empty' displayed |
+| 4. Verify no board cards shown | No cards | PASS - Only empty state message |
+
+### Screenshot
+- feature52-trash-empty-state.png captured
+
+### Console Errors
+- Only expected cookie SameSite warnings (dev environment)
+- No feature-related errors
+
+### Feature Result
+- **Feature #52: VERIFIED PASSING**
+- All 4 verification steps confirmed via browser automation
+- Trash empty state displays correctly with proper message
+
+### Current Progress
+- 70/273 features passing (25.6%)
+- Feature #52 verified - still passing
+
+[Testing] Feature #52 verified - still passing. Trash empty state displays correctly.
+
+
+---
+
+## Session - 2026-01-27 (Feature #96 - Keyboard shortcuts work for tool selection)
+
+### Context
+- Assigned Feature #96: Keyboard shortcuts work for tool selection
+- Description: Tools can be selected via keyboard (V, P, R, C, T)
+- Category: P. Accessibility
+
+### Verification Results (via Browser Automation)
+All 6 verification items PASSED:
+1. Open canvas - Canvas loaded successfully
+2. Press V key - Selection tool active (status bar shows Selection V)
+3. Press P key - Pen tool active (status bar shows Pen P)
+4. Press R key - Rectangle tool active (status bar shows Rectangle R)
+5. Press C key - Circle tool active (status bar shows Circle C)
+6. Press T key - Text tool active (status bar shows Text T)
+
+### Feature Result
+- Feature #96: PASSING
+- All keyboard shortcuts V, P, R, C, T correctly select tools
+- Screenshots captured for verification
+
+### Current Progress
+- 71/273 features passing (26.0%)
+
+[Testing] Feature #96 verified - passing.
