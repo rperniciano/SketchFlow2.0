@@ -1,0 +1,228 @@
+<div class="dashboard">
+  <!-- Header -->
+  <header class="dashboard-header">
+    <div class="header-left">
+      <h1 class="page-title">My Boards</h1>
+    </div>
+    <div class="header-center">
+      <div class="search-container" *ngIf="hasBoards">
+        <i class="bi bi-search search-icon"></i>
+        <input
+          type="text"
+          class="search-input"
+          placeholder="Search boards..."
+          [(ngModel)]="searchQuery"
+          aria-label="Search boards"
+        />
+        <button
+          *ngIf="searchQuery"
+          class="clear-search"
+          (click)="clearSearch()"
+          aria-label="Clear search"
+        >
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="btn-create" (click)="openCreateModal()">
+        <i class="bi bi-plus-lg"></i>
+        New Board
+      </button>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="tabs">
+    <button
+      class="tab"
+      [class.active]="activeTab === 'boards'"
+      (click)="switchTab('boards')"
+    >
+      <i class="bi bi-grid-3x3-gap"></i>
+      My Boards
+      <span class="tab-count" *ngIf="boards.length > 0">{{ boards.length }}</span>
+    </button>
+    <button
+      class="tab"
+      [class.active]="activeTab === 'trash'"
+      (click)="switchTab('trash')"
+    >
+      <i class="bi bi-trash3"></i>
+      Trash
+      <span class="tab-count" *ngIf="trashedBoards.length > 0">{{ trashedBoards.length }}</span>
+    </button>
+  </nav>
+
+  <!-- Content -->
+  <main class="dashboard-content">
+    <!-- Loading State -->
+    <div *ngIf="isLoading" class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading your boards...</p>
+    </div>
+
+    <!-- My Boards Tab -->
+    <ng-container *ngIf="!isLoading && activeTab === 'boards'">
+      <!-- Empty State - No boards at all -->
+      <div *ngIf="!hasBoards" class="empty-state">
+        <div class="empty-illustration">
+          <div class="illustration-canvas">
+            <div class="canvas-frame glass-card">
+              <div class="canvas-content">
+                <div class="sketch-placeholder"></div>
+                <div class="sketch-placeholder short"></div>
+                <div class="sketch-placeholder medium"></div>
+              </div>
+            </div>
+            <div class="sparkles">
+              <i class="bi bi-stars sparkle s1"></i>
+              <i class="bi bi-star-fill sparkle s2"></i>
+              <i class="bi bi-stars sparkle s3"></i>
+            </div>
+          </div>
+        </div>
+        <h2 class="empty-title">Create Your First Board</h2>
+        <p class="empty-description">
+          Start sketching your ideas and transform them into code with AI.
+          Collaborate with your team in real-time.
+        </p>
+        <button class="btn-create-first" (click)="openCreateModal()">
+          <i class="bi bi-plus-lg"></i>
+          Create Your First Board
+        </button>
+      </div>
+
+      <!-- Search No Results State -->
+      <div *ngIf="hasBoards && isSearching && !hasFilteredBoards" class="empty-state search-empty">
+        <div class="empty-illustration">
+          <i class="bi bi-search empty-icon"></i>
+        </div>
+        <h2 class="empty-title">No boards matching "{{ searchQuery }}"</h2>
+        <p class="empty-description">
+          Try a different search term or create a new board.
+        </p>
+        <button class="btn-secondary" (click)="clearSearch()">
+          Clear Search
+        </button>
+      </div>
+
+      <!-- Board Grid -->
+      <div *ngIf="hasBoards && hasFilteredBoards" class="board-grid">
+        <div
+          *ngFor="let board of filteredBoards"
+          class="board-card glass-card"
+          (click)="openBoard(board)"
+        >
+          <div class="board-thumbnail">
+            <div class="thumbnail-placeholder">
+              <i class="bi bi-easel2"></i>
+            </div>
+          </div>
+          <div class="board-info">
+            <h3 class="board-name">{{ board.name }}</h3>
+            <div class="board-meta">
+              <span class="last-modified">
+                <i class="bi bi-clock"></i>
+                {{ board.lastModified | date:'short' }}
+              </span>
+              <span class="participant-count">
+                <i class="bi bi-people"></i>
+                {{ board.participantCount }}
+              </span>
+            </div>
+          </div>
+          <div class="board-actions" (click)="$event.stopPropagation()">
+            <button class="action-btn" title="Rename" (click)="renameBoard(board)">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="action-btn" title="Share" (click)="shareBoard(board)">
+              <i class="bi bi-share"></i>
+            </button>
+            <button class="action-btn danger" title="Delete" (click)="deleteBoard(board)">
+              <i class="bi bi-trash3"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+
+    <!-- Trash Tab -->
+    <ng-container *ngIf="!isLoading && activeTab === 'trash'">
+      <!-- Empty Trash State -->
+      <div *ngIf="trashedBoards.length === 0" class="empty-state">
+        <div class="empty-illustration">
+          <i class="bi bi-trash3 empty-icon"></i>
+        </div>
+        <h2 class="empty-title">Trash is Empty</h2>
+        <p class="empty-description">
+          Deleted boards will appear here for 30 days before being permanently removed.
+        </p>
+      </div>
+
+      <!-- Trashed Boards Grid -->
+      <div *ngIf="trashedBoards.length > 0" class="board-grid">
+        <div
+          *ngFor="let board of trashedBoards"
+          class="board-card glass-card trashed"
+        >
+          <div class="board-thumbnail">
+            <div class="thumbnail-placeholder">
+              <i class="bi bi-easel2"></i>
+            </div>
+          </div>
+          <div class="board-info">
+            <h3 class="board-name">{{ board.name }}</h3>
+            <div class="board-meta">
+              <span class="last-modified">
+                <i class="bi bi-clock"></i>
+                {{ board.lastModified | date:'short' }}
+              </span>
+            </div>
+          </div>
+          <div class="board-actions">
+            <button class="action-btn" title="Restore" (click)="restoreBoard(board)">
+              <i class="bi bi-arrow-counterclockwise"></i>
+            </button>
+            <button class="action-btn danger" title="Delete Permanently" (click)="permanentlyDeleteBoard(board)">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+  </main>
+
+  <!-- Create Board Modal -->
+  <div class="modal-overlay" *ngIf="isCreateModalOpen" (click)="closeCreateModal()">
+    <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="createBoardTitle" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2 class="modal-title" id="createBoardTitle">Create New Board</h2>
+        <button class="modal-close" (click)="closeCreateModal()" aria-label="Close modal">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <label class="input-label" for="boardName">Board Name</label>
+        <input
+          type="text"
+          id="boardName"
+          class="input-field"
+          placeholder="My awesome sketch..."
+          [(ngModel)]="newBoardName"
+          (keydown.enter)="createBoard()"
+        />
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" (click)="closeCreateModal()">Cancel</button>
+        <button
+          class="btn-primary"
+          (click)="createBoard()"
+          [disabled]="!newBoardName.trim()"
+        >
+          Create Board
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

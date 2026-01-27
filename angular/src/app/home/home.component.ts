@@ -1,6 +1,7 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
 import { AuthService } from '@abp/ng.core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-home',
@@ -9,18 +10,25 @@ import { CommonModule } from '@angular/common';
   imports: [CommonModule],
   standalone: true
 })
-export class HomeComponent {
+export class HomeComponent implements OnInit {
   private authService = inject(AuthService);
+  private router = inject(Router);
 
   get hasLoggedIn(): boolean {
     return this.authService.isAuthenticated;
   }
 
+  ngOnInit(): void {
+    // Redirect authenticated users to dashboard
+    if (this.hasLoggedIn) {
+      this.router.navigate(['/dashboard']);
+    }
+  }
+
   getStarted(): void {
     if (this.hasLoggedIn) {
-      // Navigate to dashboard when implemented
-      // For now, we'll just show they're logged in
-      window.location.href = '/dashboard';
+      // Navigate to dashboard
+      this.router.navigate(['/dashboard']);
     } else {
       // Navigate to registration
       this.authService.navigateToLogin();
