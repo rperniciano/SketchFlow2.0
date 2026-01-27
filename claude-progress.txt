@@ -4682,3 +4682,104 @@ The redo functionality extends the undo system in canvas.component.ts:
 - **48/273 features passing** (~17.6%)
 - Redo functionality verified working with both keyboard shortcuts
 
+
+
+---
+
+## Session - 2026-01-27 (Feature #68 - Canvas text tool creates text elements - REGRESSION TEST)
+
+### Context
+- Assigned Feature #68: "Canvas text tool creates text elements"
+- Description: Text tool (T) allows placing text on canvas
+- Category: D. Workflow Completeness
+- Status: Already passing - regression test verification
+
+### Verification Steps Completed - ALL PASS
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Open canvas | Canvas loads | PASS |
+| 2. Press T or select Text tool | Tool becomes active (Tool: Text (T)) | PASS |
+| 3. Click on canvas | Click registers | PASS |
+| 4. Verify text input field appears | Input shows "Type here" placeholder | PASS |
+| 5. Type 'TEST_TEXT_123' | Text entered correctly | PASS |
+| 6. Click outside or press Enter | Text element confirmed | PASS |
+| 7. Verify text element is created | "TEST_TEXT_123" visible on canvas | PASS |
+
+### Screenshots Captured
+- feature68-regression-step1-canvas.png - Initial canvas with toolbar
+- feature68-regression-step2-text-tool-selected.png - Text tool (Aa) highlighted
+- feature68-regression-step3-text-input-appeared.png - Text input field with "Type here"
+- feature68-regression-step4-text-element-created.png - Text element created on canvas
+- feature68-regression-final-verification.png - Final state verification
+
+### Console Errors
+- Only SameSite cookie warning (dev environment, not related to feature)
+
+### Feature Result
+- **Feature #68: PASSING (no regression)**
+- All 7 verification steps completed successfully
+- Text tool creates text elements correctly
+
+[Testing] Feature #68 verified - still passing. Canvas text tool creates text elements correctly.
+
+
+---
+
+## Session - 2026-01-27 (Feature #79 - Escape deselects all elements)
+
+### Context
+- Assigned Feature #79: "Escape deselects all elements"
+- Description: Pressing Escape clears selection
+- Category: D. Workflow Completeness
+
+### What Was Verified
+
+1. **Implementation Review**:
+   - Escape key handler at lines 1191-1196 in canvas.component.ts
+   - Calls `this.canvas.discardActiveObject()` to clear selection
+   - Followed by `this.canvas.renderAll()` to update display
+
+2. **Browser Testing**:
+   - Logged in as admin user
+   - Opened UNDO_HISTORY_TEST_76 board (65 elements)
+   - Selection tool was active
+
+3. **Test Execution**:
+   - Pressed Ctrl+A to select all 65 elements
+   - Console logged: "[Canvas] Selected all 65 objects"
+   - Blue selection handles visible around all elements
+   - Pressed Escape key
+   - Selection cleared - no more selection handles visible
+   - Repeated test cycle - same results
+
+### Feature #79 Verification Results
+
+| Step | Action | Expected | Result |
+|------|--------|----------|--------|
+| 1 | Open canvas with elements | Canvas loads with 65 elements | ✅ PASS |
+| 2 | Press Ctrl+A | All 65 elements selected | ✅ PASS |
+| 3 | Press Escape | Selection cleared | ✅ PASS |
+| 4 | Verify no elements selected | No selection handles visible | ✅ PASS |
+| 5 | Repeat Ctrl+A | All elements selected again | ✅ PASS |
+| 6 | Repeat Escape | Selection cleared again | ✅ PASS |
+| 7 | Check console for errors | No JavaScript errors | ✅ PASS |
+
+### Console Errors
+- None
+
+### Screenshots Captured
+- feature79-step1-all-selected.png - All 65 elements selected with blue handles
+- feature79-step2-after-escape.png - Selection cleared, no handles
+- feature79-step3-selected-again.png - Re-selected all elements
+- feature79-step4-escape-cleared.png - Selection cleared again
+
+### Feature Result
+- **Feature #79: PASSING**
+- All verification steps completed successfully
+- Escape key correctly deselects all elements
+
+### Current Progress
+- **53/273 features passing** (~19.4%)
+- Escape deselection verified end-to-end
+
