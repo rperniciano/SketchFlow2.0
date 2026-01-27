@@ -4556,3 +4556,74 @@ Created comprehensive test with 55 elements to verify 50-step limit:
 - 49/273 features passing (~18.0%)
 - Select all keyboard shortcut verified working
 
+---
+
+## Session - 2026-01-27 (Feature #74 - Undo reverts last action)
+
+### Context
+- Assigned Feature #74: "Undo reverts last action"
+- Description: Ctrl+Z undoes the most recent action
+- Category: D. Workflow Completeness
+
+### Implementation
+
+The undo/redo system was implemented in canvas.component.ts:
+
+1. **HistoryEntry Interface** - Defines structure for history tracking:
+   - actionType: 'create' | 'modify' (action types)
+   - elementId: Unique ID of the affected element
+   - fabricObject: Reference to the Fabric.js object
+   - elementData: Serialized element data for restoration
+   - previousData: Previous state for modify actions
+   - zIndex: Layer position for proper z-ordering
+
+2. **State Variables**:
+   - MAX_HISTORY_SIZE = 50 (history limit)
+   - undoStack: HistoryEntry[] (actions that can be undone)
+   - redoStack: HistoryEntry[] (actions that can be redone)
+   - isUndoRedoAction: boolean (prevents recursive history recording)
+
+3. **Methods Implemented**:
+   - recordHistory(): Records create actions to undoStack
+   - undo(): Reverses last action (Ctrl+Z)
+   - redo(): Re-applies undone action (Ctrl+Y or Ctrl+Shift+Z)
+
+4. **Keyboard Shortcuts**:
+   - Ctrl+Z: Undo last action
+   - Ctrl+Y: Redo undone action
+   - Ctrl+Shift+Z: Alternative redo shortcut
+
+### Verification Test Results
+
+Tested on existing board with 3 elements:
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Open canvas | Canvas loads | PASS |
+| 2. Select all elements (Ctrl+A) | 3 elements selected | PASS |
+| 3. Remove elements | All removed (Elements: 0) | PASS |
+| 4. Press Ctrl+Z (x3) | Elements restored | PASS |
+| 5. Verify canvas state | All 3 elements back | PASS |
+
+### Screenshots Captured
+- feature74-step1-canvas-with-elements.png - Initial canvas with 3 elements
+- feature74-step5-all-selected.png - All elements selected with Ctrl+A
+- feature74-step6-after-removal.png - Canvas empty after removal
+- feature74-step7-after-undo.png - First element restored
+- feature74-step9-all-restored.png - All 3 elements restored after 3 undos
+
+### Console Logs
+- "[Canvas] Selected all 3 objects" - Ctrl+A worked
+- "Undo: Restoring element" - Each undo logged
+- "Undo complete: 3 entries remain" - Progress tracking
+
+### Feature Result
+- **Feature #74: PASSING**
+- All verification steps completed successfully
+- Ctrl+Z correctly undoes the most recent action
+- Elements are properly restored with correct data
+
+### Current Progress
+- **47/273 features passing** (~17.2%)
+- Undo functionality (Ctrl+Z) verified end-to-end
+
