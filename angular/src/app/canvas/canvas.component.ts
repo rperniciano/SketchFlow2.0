@@ -37,6 +37,19 @@ interface ElementDataJson {
   fontSize?: number;
 }
 
+// Undo/Redo action types
+type HistoryActionType = 'create' | 'delete' | 'modify';
+
+// Interface for history state entry
+interface HistoryEntry {
+  actionType: HistoryActionType;
+  elementId?: string; // Database element ID
+  fabricObject?: fabric.FabricObject; // Reference to fabric object (for undo of delete)
+  elementData?: string; // JSON string of element data
+  previousData?: string; // For modify actions - the state before modification
+  zIndex?: number;
+}
+
 @Component({
   selector: 'app-canvas',
   standalone: true,
@@ -99,8 +112,9 @@ interface ElementDataJson {
 
           <div class="tool-divider"></div>
 
-          <!-- Color Picker -->
+          <!-- Stroke Color Picker -->
           <div class="tool-group">
+            <span class="tool-label">Stroke</span>
             <div class="color-picker">
               <div
                 *ngFor="let color of colors"
@@ -110,6 +124,31 @@ interface ElementDataJson {
                 [class.light]="color.value === '#ffffff'"
                 (click)="selectColor(color.value)"
                 [title]="color.name">
+              </div>
+            </div>
+          </div>
+
+          <div class="tool-divider"></div>
+
+          <!-- Fill Color Picker -->
+          <div class="tool-group">
+            <span class="tool-label">Fill</span>
+            <div class="color-picker">
+              <!-- No fill option -->
+              <div
+                class="color-swatch no-fill"
+                [class.active]="currentFillColor === null"
+                (click)="selectFillColor(null)"
+                title="No Fill">
+              </div>
+              <div
+                *ngFor="let color of colors"
+                class="color-swatch"
+                [style.backgroundColor]="color.value"
+                [class.active]="currentFillColor === color.value"
+                [class.light]="color.value === '#ffffff'"
+                (click)="selectFillColor(color.value)"
+                [title]="color.name + ' Fill'">
               </div>
             </div>
           </div>
@@ -333,6 +372,21 @@ interface ElementDataJson {
       border-color: #a5b4fc;
     }
 
+    .color-swatch.no-fill {
+      background: linear-gradient(135deg, #ffffff 45%, transparent 45%, transparent 55%, #ffffff 55%),
+                  linear-gradient(45deg, #ef4444 0%, #ef4444 100%);
+      background-size: 100% 100%;
+    }
+
+    .tool-label {
+      font-size: 0.625rem;
+      color: #71717a;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      text-align: center;
+      margin-bottom: 0.25rem;
+    }
+
     .thickness-btn {
       padding: 8px;
     }
@@ -457,6 +511,7 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   canvas: fabric.Canvas | null = null;
   currentTool: CanvasTool = 'select';
   currentColor = '#000000';
+  currentFillColor: string | null = null; // null means no fill (transparent)
   currentThickness = 4;
   zoomLevel = 1;
   selectedElementCount = 0;
@@ -473,6 +528,12 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   private nextZIndex = 0;
   isSaving = false;
   elementLoadCount = 0;
+
+  // Undo/Redo history stack (50-step limit per spec)
+  private readonly MAX_HISTORY_SIZE = 50;
+  private undoStack: HistoryEntry[] = [];
+  private redoStack: HistoryEntry[] = [];
+  private isUndoRedoAction = false; // Flag to prevent recording during undo/redo
 
   colors: CanvasColors[] = [
     { name: 'Black', value: '#000000' },
@@ -757,10 +818,11 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     if (!this.board) return;
 
     const elementData = this.fabricObjectToElementData(obj, type);
+    const elementDataStr = JSON.stringify(elementData);
     const zIndex = this.nextZIndex++;
 
     const dto: CreateBoardElementDto = {
-      elementData: JSON.stringify(elementData),
+      elementData: elementDataStr,
       zIndex: zIndex
     };
 
@@ -772,6 +834,15 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
         this.elementMap.set(savedElement.id, obj);
         this.isSaving = false;
         this.elementLoadCount++;
+
+        // Record in history for undo support
+        this.recordHistory({
+          actionType: 'create',
+          elementId: savedElement.id,
+          fabricObject: obj,
+          elementData: elementDataStr,
+          zIndex: zIndex
+        });
       },
       error: (err) => {
         console.error('Failed to save element:', err);
@@ -882,7 +953,7 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
         top: this.startY,
         width: 0,
         height: 0,
-        fill: 'transparent',
+        fill: this.currentFillColor || 'transparent',
         stroke: this.currentColor,
         strokeWidth: this.currentThickness,
         selectable: true,
@@ -895,7 +966,7 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
         left: this.startX,
         top: this.startY,
         radius: 0,
-        fill: 'transparent',
+        fill: this.currentFillColor || 'transparent',
         stroke: this.currentColor,
         strokeWidth: this.currentThickness,
         selectable: true,
@@ -1030,6 +1101,10 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
+  selectFillColor(color: string | null): void {
+    this.currentFillColor = color;
+  }
+
   selectThickness(thickness: number): void {
     this.currentThickness = thickness;
     if (this.canvas?.freeDrawingBrush) {
@@ -1050,14 +1125,39 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
 
   @HostListener('window:keydown', ['$event'])
   handleKeyboardShortcut(event: KeyboardEvent): void {
-    // Don't trigger shortcuts when typing in text
+    // Don't trigger shortcuts when typing in text (except for Ctrl combinations)
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+      // Only allow Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y in text inputs for undo/redo
+      if (!event.ctrlKey && !event.metaKey) {
+        return;
+      }
+    }
+
+    // Check if we're editing text in fabric (but still allow undo/redo)
+    const activeObject = this.canvas?.getActiveObject();
+    const isEditingText = activeObject instanceof fabric.IText && activeObject.isEditing;
+
+    // Handle Undo: Ctrl+Z
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !event.shiftKey) {
+      event.preventDefault();
+      this.undo();
       return;
     }
 
-    // Check if we're editing text in fabric
-    const activeObject = this.canvas?.getActiveObject();
-    if (activeObject instanceof fabric.IText && activeObject.isEditing) {
+    // Handle Redo: Ctrl+Shift+Z or Ctrl+Y
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'z') {
+      event.preventDefault();
+      this.redo();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
+      event.preventDefault();
+      this.redo();
+      return;
+    }
+
+    // Skip tool shortcuts if editing text
+    if (isEditingText) {
       return;
     }
 
@@ -1149,13 +1249,25 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
 
     const activeObjects = this.canvas.getActiveObjects();
     if (activeObjects.length > 0) {
-      // Collect element IDs to delete from database
+      // Collect element IDs to delete from database and record history
       const elementIds: string[] = [];
 
       activeObjects.forEach((obj) => {
         const elementId = (obj as any)._elementId;
         if (elementId) {
           elementIds.push(elementId);
+
+          // Record delete action in history before removing
+          const type = this.getObjectType(obj);
+          const elementData = this.fabricObjectToElementData(obj, type);
+          this.recordHistory({
+            actionType: 'delete',
+            elementId: elementId,
+            fabricObject: obj,
+            elementData: JSON.stringify(elementData),
+            zIndex: this.nextZIndex - 1
+          });
+
           this.elementMap.delete(elementId);
         }
         this.canvas!.remove(obj);
@@ -1178,6 +1290,164 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
           }
         });
       }
+    }
+  }
+
+  /**
+   * Record an action in the undo history stack
+   */
+  private recordHistory(entry: HistoryEntry): void {
+    // Don't record if we're currently executing an undo/redo
+    if (this.isUndoRedoAction) return;
+
+    this.undoStack.push(entry);
+
+    // Limit stack size to MAX_HISTORY_SIZE (50 steps per spec)
+    if (this.undoStack.length > this.MAX_HISTORY_SIZE) {
+      this.undoStack.shift();
+    }
+
+    // Clear redo stack when a new action is recorded
+    this.redoStack = [];
+  }
+
+  /**
+   * Undo the last action (Ctrl+Z)
+   */
+  private undo(): void {
+    if (!this.canvas || this.undoStack.length === 0) {
+      console.log('Undo: Nothing to undo');
+      return;
+    }
+
+    const entry = this.undoStack.pop()!;
+    this.isUndoRedoAction = true;
+
+    try {
+      switch (entry.actionType) {
+        case 'create':
+          // Undo create = remove the element
+          if (entry.fabricObject) {
+            this.canvas.remove(entry.fabricObject);
+            this.canvas.renderAll();
+            this.elementLoadCount--;
+
+            // Delete from database
+            if (entry.elementId && this.board) {
+              this.boardService.deleteElements(this.board.id, [entry.elementId]).subscribe({
+                error: (err) => console.error('Failed to delete during undo:', err)
+              });
+              this.elementMap.delete(entry.elementId);
+            }
+          }
+          break;
+
+        case 'delete':
+          // Undo delete = restore the element
+          if (entry.fabricObject && entry.elementData) {
+            this.canvas.add(entry.fabricObject);
+            this.canvas.renderAll();
+            this.elementLoadCount++;
+
+            // Re-create in database
+            if (this.board) {
+              const dto = {
+                elementData: entry.elementData,
+                zIndex: entry.zIndex || this.nextZIndex++
+              };
+              this.boardService.createElement(this.board.id, dto).subscribe({
+                next: (savedElement) => {
+                  (entry.fabricObject as any)._elementId = savedElement.id;
+                  entry.elementId = savedElement.id;
+                  this.elementMap.set(savedElement.id, entry.fabricObject!);
+                },
+                error: (err) => console.error('Failed to restore during undo:', err)
+              });
+            }
+          }
+          break;
+
+        case 'modify':
+          // Undo modify = restore previous state
+          // Not yet implemented (for MVP, focus on create/delete)
+          break;
+      }
+
+      // Add to redo stack
+      this.redoStack.push(entry);
+
+    } finally {
+      this.isUndoRedoAction = false;
+    }
+  }
+
+  /**
+   * Redo the last undone action (Ctrl+Shift+Z or Ctrl+Y)
+   */
+  private redo(): void {
+    if (!this.canvas || this.redoStack.length === 0) {
+      console.log('Redo: Nothing to redo');
+      return;
+    }
+
+    const entry = this.redoStack.pop()!;
+    this.isUndoRedoAction = true;
+
+    try {
+      switch (entry.actionType) {
+        case 'create':
+          // Redo create = add the element back
+          if (entry.fabricObject && entry.elementData) {
+            this.canvas.add(entry.fabricObject);
+            this.canvas.renderAll();
+            this.elementLoadCount++;
+
+            // Re-create in database
+            if (this.board) {
+              const dto = {
+                elementData: entry.elementData,
+                zIndex: entry.zIndex || this.nextZIndex++
+              };
+              this.boardService.createElement(this.board.id, dto).subscribe({
+                next: (savedElement) => {
+                  (entry.fabricObject as any)._elementId = savedElement.id;
+                  entry.elementId = savedElement.id;
+                  this.elementMap.set(savedElement.id, entry.fabricObject!);
+                },
+                error: (err) => console.error('Failed to recreate during redo:', err)
+              });
+            }
+          }
+          break;
+
+        case 'delete':
+          // Redo delete = remove the element again
+          if (entry.fabricObject) {
+            this.canvas.remove(entry.fabricObject);
+            this.canvas.renderAll();
+            this.elementLoadCount--;
+
+            // Delete from database
+            if (entry.elementId && this.board) {
+              this.boardService.deleteElements(this.board.id, [entry.elementId]).subscribe({
+                error: (err) => console.error('Failed to delete during redo:', err)
+              });
+              this.elementMap.delete(entry.elementId);
+            }
+          }
+          break;
+
+        case 'modify':
+          // Redo modify = apply the new state
+          // Not yet implemented (for MVP, focus on create/delete)
+          break;
+      }
+
+      // Add back to undo stack
+      this.undoStack.push(entry);
+
+    } finally {
+      this.isUndoRedoAction = false;
     }
   }
 
