@@ -27,6 +27,11 @@ export const APP_ROUTES: Routes = [
     loadComponent: () => import('./account/confirm-email.component').then(c => c.ConfirmEmailComponent),
   },
   {
+    path: 'settings',
+    loadComponent: () => import('./settings/settings.component').then(c => c.SettingsComponent),
+    canActivate: [authGuard],
+  },
+  {
     path: 'account',
     loadChildren: () => import('@abp/ng.account').then(c => c.createRoutes()),
   },

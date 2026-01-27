@@ -41,4 +41,19 @@ public class UserProfileDto
     /// The user's phone number.
     /// </summary>
     public string? PhoneNumber { get; set; }
+
+    /// <summary>
+    /// The user's cursor color for real-time collaboration (hex color code).
+    /// </summary>
+    public string CursorColor { get; set; } = "#6366f1";
+
+    /// <summary>
+    /// The user's default stroke color for drawing (hex color code).
+    /// </summary>
+    public string DefaultStrokeColor { get; set; } = "#000000";
+
+    /// <summary>
+    /// The user's default stroke thickness for drawing (2, 4, or 8 pixels).
+    /// </summary>
+    public int DefaultStrokeThickness { get; set; } = 4;
 }

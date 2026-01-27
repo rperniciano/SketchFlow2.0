@@ -1,0 +1,225 @@
+<div class="settings-page">
+  <!-- Header -->
+  <div class="settings-header">
+    <button class="btn-back" (click)="goBack()" title="Back to Dashboard">
+      <i class="bi bi-arrow-left"></i>
+    </button>
+    <h1 class="page-title">Settings</h1>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="isLoading" class="loading-state">
+    <div class="spinner"></div>
+    <p>Loading your profile...</p>
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="loadError && !isLoading" class="error-state glass-card">
+    <i class="bi bi-exclamation-triangle"></i>
+    <p>{{ loadError }}</p>
+    <button class="btn-primary" (click)="loadProfile()">Try Again</button>
+  </div>
+
+  <!-- Main Content -->
+  <div *ngIf="!isLoading && !loadError" class="settings-content">
+    <!-- Sidebar Tabs -->
+    <div class="settings-sidebar glass-card">
+      <div class="user-info">
+        <div class="avatar" [style.background-color]="cursorColor">
+          {{ initials }}
+        </div>
+        <div class="user-details">
+          <span class="user-name">{{ fullName }}</span>
+          <span class="user-email">{{ email }}</span>
+        </div>
+      </div>
+
+      <nav class="tab-nav">
+        <button
+          class="tab-button"
+          [class.active]="activeTab === 'profile'"
+          (click)="switchTab('profile')"
+        >
+          <i class="bi bi-person"></i>
+          <span>Profile</span>
+        </button>
+        <button
+          class="tab-button"
+          [class.active]="activeTab === 'preferences'"
+          (click)="switchTab('preferences')"
+        >
+          <i class="bi bi-palette"></i>
+          <span>Preferences</span>
+        </button>
+        <button
+          class="tab-button"
+          [class.active]="activeTab === 'security'"
+          (click)="switchTab('security')"
+        >
+          <i class="bi bi-shield-lock"></i>
+          <span>Security</span>
+        </button>
+        <button
+          class="tab-button danger"
+          [class.active]="activeTab === 'danger'"
+          (click)="switchTab('danger')"
+        >
+          <i class="bi bi-exclamation-triangle"></i>
+          <span>Danger Zone</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Content Area -->
+    <div class="settings-main glass-card">
+      <!-- Profile Tab -->
+      <div *ngIf="activeTab === 'profile'" class="tab-content">
+        <h2 class="section-title">Profile Information</h2>
+        <p class="section-description">Manage your account details and display name.</p>
+
+        <div class="form-group">
+          <label for="displayName">Display Name</label>
+          <input
+            type="text"
+            id="displayName"
+            [(ngModel)]="displayName"
+            placeholder="Your display name"
+            class="form-input"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="surname">Surname</label>
+          <input
+            type="text"
+            id="surname"
+            [(ngModel)]="surname"
+            placeholder="Your surname"
+            class="form-input"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="email">Email Address</label>
+          <div class="input-with-badge">
+            <input
+              type="email"
+              id="email"
+              [value]="email"
+              readonly
+              class="form-input readonly"
+            />
+            <span class="badge" [class.verified]="emailConfirmed" [class.unverified]="!emailConfirmed">
+              <i class="bi" [class.bi-check-circle]="emailConfirmed" [class.bi-x-circle]="!emailConfirmed"></i>
+              {{ emailConfirmed ? 'Verified' : 'Unverified' }}
+            </span>
+          </div>
+          <p *ngIf="!emailConfirmed" class="field-help warning">
+            <i class="bi bi-info-circle"></i>
+            Your email is not verified. Some features may be limited.
+            <button class="link-button" (click)="resendVerificationEmail()">Resend verification email</button>
+          </p>
+        </div>
+      </div>
+
+      <!-- Preferences Tab -->
+      <div *ngIf="activeTab === 'preferences'" class="tab-content">
+        <h2 class="section-title">Preferences</h2>
+        <p class="section-description">Customize your drawing and collaboration settings.</p>
+
+        <div class="form-group">
+          <label>Cursor Color</label>
+          <p class="field-description">Choose a color for your cursor in collaborative boards.</p>
+          <div class="color-palette">
+            <button
+              *ngFor="let color of cursorColors"
+              class="color-swatch"
+              [class.selected]="cursorColor === color"
+              [style.background-color]="color"
+              (click)="selectCursorColor(color)"
+              [title]="color"
+            >
+              <i *ngIf="cursorColor === color" class="bi bi-check"></i>
+            </button>
+          </div>
+          <div class="color-preview">
+            <span class="preview-label">Preview:</span>
+            <div class="cursor-preview" [style.border-color]="cursorColor">
+              <span class="cursor-name" [style.background-color]="cursorColor">{{ displayName || 'You' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Default Stroke Color</label>
+          <p class="field-description">Default color when you start drawing.</p>
+          <div class="color-palette">
+            <button
+              *ngFor="let color of strokeColors"
+              class="color-swatch"
+              [class.selected]="defaultStrokeColor === color"
+              [style.background-color]="color"
+              [class.is-white]="color === '#ffffff'"
+              (click)="selectStrokeColor(color)"
+              [title]="color"
+            >
+              <i *ngIf="defaultStrokeColor === color" class="bi bi-check" [class.dark-check]="color === '#ffffff' || color === '#eab308'"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Default Stroke Thickness</label>
+          <p class="field-description">Default line thickness when you start drawing.</p>
+          <div class="thickness-options">
+            <button
+              *ngFor="let thickness of strokeThicknesses"
+              class="thickness-button"
+              [class.selected]="defaultStrokeThickness === thickness.value"
+              (click)="selectStrokeThickness(thickness.value)"
+            >
+              <span class="thickness-indicator" [style.height.px]="thickness.value"></span>
+              <span class="thickness-label">{{ thickness.label }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Security Tab -->
+      <div *ngIf="activeTab === 'security'" class="tab-content">
+        <h2 class="section-title">Security</h2>
+        <p class="section-description">Manage your password and security settings.</p>
+
+        <div class="security-section">
+          <h3>Password</h3>
+          <p>Change your account password. You'll need to enter your current password.</p>
+          <button class="btn-secondary" disabled>Change Password</button>
+          <p class="field-help muted">Password change functionality coming soon.</p>
+        </div>
+
+        <div class="security-section">
+          <h3>Sessions</h3>
+          <p>You are currently logged in. You can log out from all devices if needed.</p>
+          <button class="btn-secondary" disabled>Log Out All Devices</button>
+        </div>
+      </div>
+
+      <!-- Danger Zone Tab -->
+      <div *ngIf="activeTab === 'danger'" class="tab-content">
+        <h2 class="section-title danger">Danger Zone</h2>
+        <p class="section-description">Irreversible actions. Please be careful.</p>
+
+        <div class="danger-section">
+          <div class="danger-info">
+            <h3>Delete Account</h3>
+            <p>
+              Once you delete your account, there is no going back.
+              All your boards and data will be permanently deleted after a 30-day grace period.
+            </p>
+          </div>
+          <button class="btn-danger" disabled>Delete Account</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

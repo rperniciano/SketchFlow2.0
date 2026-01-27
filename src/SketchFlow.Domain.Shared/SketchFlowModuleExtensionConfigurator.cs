@@ -37,35 +37,43 @@ public static class SketchFlowModuleExtensionConfigurator
 
     private static void ConfigureExtraProperties()
     {
-        /* You can configure extra properties for the
-         * entities defined in the modules used by your application.
-         *
-         * This class can be used to define these extra properties
-         * with a high level, easy to use API.
-         *
-         * Example: Add a new property to the user entity of the identity module
+        // Configure extra properties for IdentityUser
+        // These properties are used for user preferences and profile customization
+        ObjectExtensionManager.Instance.Modules()
+            .ConfigureIdentity(identity =>
+            {
+                identity.ConfigureUser(user =>
+                {
+                    // Cursor color for real-time collaboration (hex color code)
+                    user.AddOrUpdateProperty<string>(
+                        "CursorColor",
+                        property =>
+                        {
+                            property.DefaultValue = "#6366f1"; // Default indigo
+                            property.Attributes.Add(new StringLengthAttribute(7) { MinimumLength = 7 });
+                        }
+                    );
 
-           ObjectExtensionManager.Instance.Modules()
-              .ConfigureIdentity(identity =>
-              {
-                  identity.ConfigureUser(user =>
-                  {
-                      user.AddOrUpdateProperty<string>( //property type: string
-                          "SocialSecurityNumber", //property name
-                          property =>
-                          {
-                              //validation rules
-                              property.Attributes.Add(new RequiredAttribute());
-                              property.Attributes.Add(new StringLengthAttribute(64) {MinimumLength = 4});
+                    // Default stroke color for drawing (hex color code)
+                    user.AddOrUpdateProperty<string>(
+                        "DefaultStrokeColor",
+                        property =>
+                        {
+                            property.DefaultValue = "#000000"; // Default black
+                            property.Attributes.Add(new StringLengthAttribute(7) { MinimumLength = 7 });
+                        }
+                    );
 
-                              //...other configurations for this property
-                          }
-                      );
-                  });
-              });
-
-         * See the documentation for more:
-         * https://abp.io/docs/latest/framework/architecture/modularity/extending/module-entity-extensions
-         */
+                    // Default stroke thickness for drawing (2, 4, or 8 pixels)
+                    user.AddOrUpdateProperty<int>(
+                        "DefaultStrokeThickness",
+                        property =>
+                        {
+                            property.DefaultValue = 4; // Default medium
+                            property.Attributes.Add(new RangeAttribute(2, 8));
+                        }
+                    );
+                });
+            });
     }
 }
