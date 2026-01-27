@@ -14,6 +14,12 @@ import { ConnectionLostBannerComponent } from '../shared/components/connection-l
 import { ToastContainerComponent } from '../shared/components/toast-container.component';
 import * as fabric from 'fabric';
 
+// Prism.js for syntax highlighting (Feature #121)
+import * as Prism from 'prismjs';
+import 'prismjs/components/prism-typescript';
+import 'prismjs/components/prism-jsx';
+import 'prismjs/components/prism-tsx';
+
 interface GuestSession {
   guestId: string;
   guestName: string;
@@ -356,18 +362,21 @@ interface RemoteSelection {
             </div>
           </div>
 
-          <!-- Generate Component Button (Feature #117: Generate Component button appears on selection) -->
+          <!-- Generate Component Button (Feature #117 + #118: Generate Component button appears on selection) -->
           <!-- Per spec: "Generate Component" button appears above selected region/elements -->
+          <!-- Per spec: Loading state on selection during generation (~10s) -->
           <!-- Per spec: Keyboard shortcut Ctrl+G triggers generation when selection active -->
           <button
             *ngIf="showGenerateButton && selectedElementCount > 0"
             class="generate-component-btn"
+            [class.generating]="isGenerating"
+            [disabled]="isGenerating"
             [style.left.px]="generateButtonPosition.left"
             [style.top.px]="generateButtonPosition.top"
             (click)="onGenerateComponent()"
-            title="Generate Component (Ctrl+G)">
-            <i class="bi bi-magic"></i>
-            Generate Component
+            [title]="isGenerating ? 'Generating...' : 'Generate Component (Ctrl+G)'">
+            <i class="bi" [class.bi-magic]="!isGenerating" [class.bi-arrow-repeat]="isGenerating" [class.spin]="isGenerating"></i>
+            {{ isGenerating ? 'Generating...' : 'Generate Component' }}
           </button>
         </div>
 
@@ -434,7 +443,7 @@ interface RemoteSelection {
                   Copy
                 </button>
               </div>
-              <pre class="code-block"><code>{{ generatedCode }}</code></pre>
+              <pre class="code-block"><code class="language-tsx" [innerHTML]="highlightedCode"></code></pre>
             </div>
 
             <!-- Action Buttons -->
@@ -1075,6 +1084,86 @@ interface RemoteSelection {
       filter: grayscale(0.7);
     }
 
+    /* Generate Component Button (Feature #117: Generate Component button appears on selection) */
+    /* Per spec: "Button positioned above selection", glassmorphism aesthetic */
+    .generate-component-btn {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.9) 0%, rgba(139, 92, 246, 0.9) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      color: #ffffff;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      z-index: 150; /* Above cursors but below modals */
+      box-shadow:
+        0 4px 12px rgba(99, 102, 241, 0.4),
+        0 2px 6px rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(8px);
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      pointer-events: auto;
+    }
+
+    .generate-component-btn:hover {
+      transform: translateY(-2px);
+      background: linear-gradient(135deg, rgba(99, 102, 241, 1) 0%, rgba(139, 92, 246, 1) 100%);
+      box-shadow:
+        0 6px 16px rgba(99, 102, 241, 0.5),
+        0 3px 8px rgba(0, 0, 0, 0.4);
+    }
+
+    .generate-component-btn:active {
+      transform: translateY(0);
+      box-shadow:
+        0 2px 8px rgba(99, 102, 241, 0.3),
+        0 1px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .generate-component-btn:focus {
+      outline: none;
+      box-shadow:
+        0 4px 12px rgba(99, 102, 241, 0.4),
+        0 2px 6px rgba(0, 0, 0, 0.3),
+        0 0 0 3px rgba(99, 102, 241, 0.5);
+    }
+
+    .generate-component-btn i {
+      font-size: 1rem;
+    }
+
+    /* Feature #118: Loading state during generation */
+    .generate-component-btn.generating {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.6) 0%, rgba(139, 92, 246, 0.6) 100%);
+      cursor: wait;
+      opacity: 0.9;
+    }
+
+    .generate-component-btn.generating:hover {
+      transform: none;
+      box-shadow:
+        0 4px 12px rgba(99, 102, 241, 0.4),
+        0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .generate-component-btn:disabled {
+      cursor: not-allowed;
+    }
+
+    /* Spin animation for loading icon */
+    .generate-component-btn i.spin {
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
     .status-bar {
       display: flex;
       align-items: center;
@@ -1210,6 +1299,428 @@ interface RemoteSelection {
       outline-offset: 2px;
       box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.4);
     }
+
+    /* Code Panel Styles (Feature #119: Code panel slides in on generation success) */
+    /* Per spec: Fixed width 420px, slides in from right */
+    .code-panel {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 420px;
+      height: 100%;
+      background: rgba(18, 18, 26, 0.98);
+      backdrop-filter: blur(12px);
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 200;
+      box-shadow: -4px 0 20px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Slide-in animation (Feature #119: slides in from right) */
+    .code-panel.open {
+      transform: translateX(0);
+    }
+
+    .code-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(26, 26, 37, 0.9);
+    }
+
+    .code-panel-header h3 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .code-panel-close {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      border-radius: 6px;
+      color: #a1a1aa;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .code-panel-close:hover {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+    }
+
+    .code-panel-close:focus-visible {
+      outline: 2px solid #6366f1;
+      outline-offset: 2px;
+    }
+
+    /* Loading State */
+    .code-panel-loading {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      color: #a1a1aa;
+    }
+
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(99, 102, 241, 0.2);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: codePanelSpin 1s linear infinite;
+    }
+
+    @keyframes codePanelSpin {
+      to { transform: rotate(360deg); }
+    }
+
+    .code-panel-loading p {
+      margin: 0;
+      font-size: 0.875rem;
+    }
+
+    .loading-hint {
+      color: #71717a;
+      font-size: 0.75rem !important;
+    }
+
+    /* Error State */
+    .code-panel-error {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .code-panel-error i {
+      font-size: 2.5rem;
+      color: #ef4444;
+    }
+
+    .code-panel-error p {
+      margin: 0;
+      color: #a1a1aa;
+      font-size: 0.875rem;
+    }
+
+    .btn-retry {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: rgba(99, 102, 241, 0.2);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 6px;
+      color: #a5b4fc;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-retry:hover {
+      background: rgba(99, 102, 241, 0.3);
+    }
+
+    /* Code Panel Content */
+    .code-panel-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .component-name-section {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .component-name-section label {
+      display: block;
+      font-size: 0.75rem;
+      color: #71717a;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .component-name-input {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      background: rgba(26, 26, 37, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 0.875rem;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    .component-name-input:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+
+    /* Code Display */
+    .code-display {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1.25rem;
+      background: rgba(0, 0, 0, 0.3);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .code-filename {
+      font-size: 0.75rem;
+      color: #a1a1aa;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    .btn-copy {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.375rem 0.75rem;
+      background: rgba(99, 102, 241, 0.2);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 4px;
+      color: #a5b4fc;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-copy:hover {
+      background: rgba(99, 102, 241, 0.3);
+    }
+
+    .code-block {
+      flex: 1;
+      margin: 0;
+      padding: 1rem 1.25rem;
+      background: rgba(0, 0, 0, 0.4);
+      overflow: auto;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.8125rem;
+      line-height: 1.6;
+      color: #e4e4e7;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .code-block code {
+      color: inherit;
+      font-family: inherit;
+    }
+
+    /* Prism.js Dark Theme Syntax Highlighting (Feature #121) */
+    /* Token colors optimized for dark background per design system */
+
+    /* Comments - muted gray */
+    .code-block .token.comment,
+    .code-block .token.prolog,
+    .code-block .token.doctype,
+    .code-block .token.cdata {
+      color: #71717a;
+      font-style: italic;
+    }
+
+    /* Punctuation */
+    .code-block .token.punctuation {
+      color: #a1a1aa;
+    }
+
+    /* Namespace */
+    .code-block .token.namespace {
+      opacity: 0.7;
+    }
+
+    /* Properties, tags, booleans, numbers, constants */
+    .code-block .token.property,
+    .code-block .token.tag,
+    .code-block .token.boolean,
+    .code-block .token.number,
+    .code-block .token.constant,
+    .code-block .token.symbol {
+      color: #f59e0b; /* Amber - warning color from design system */
+    }
+
+    /* Selectors, attributes, strings, chars */
+    .code-block .token.selector,
+    .code-block .token.attr-name,
+    .code-block .token.string,
+    .code-block .token.char,
+    .code-block .token.builtin {
+      color: #10b981; /* Green - success color from design system */
+    }
+
+    /* Operators, entities, URLs */
+    .code-block .token.operator,
+    .code-block .token.entity,
+    .code-block .token.url,
+    .code-block .language-css .token.string,
+    .code-block .style .token.string {
+      color: #22d3ee; /* Cyan for operators */
+    }
+
+    /* Keywords, at-rules, statements */
+    .code-block .token.atrule,
+    .code-block .token.attr-value,
+    .code-block .token.keyword {
+      color: #a855f7; /* Purple from design system */
+    }
+
+    /* Functions, classes */
+    .code-block .token.function,
+    .code-block .token.class-name {
+      color: #6366f1; /* Indigo - primary accent from design system */
+    }
+
+    /* Regex, important */
+    .code-block .token.regex,
+    .code-block .token.important,
+    .code-block .token.variable {
+      color: #f472b6; /* Pink for special tokens */
+    }
+
+    /* Important emphasis */
+    .code-block .token.important,
+    .code-block .token.bold {
+      font-weight: bold;
+    }
+
+    /* Italic */
+    .code-block .token.italic {
+      font-style: italic;
+    }
+
+    /* Entity cursor */
+    .code-block .token.entity {
+      cursor: help;
+    }
+
+    /* JSX/TSX specific - tag names */
+    .code-block .token.tag .token.tag {
+      color: #ef4444; /* Red - error color from design system, for tag names */
+    }
+
+    /* JSX/TSX - component names (PascalCase) */
+    .code-block .token.tag .token.class-name {
+      color: #3b82f6; /* Blue from canvas colors */
+    }
+
+    /* JSX/TSX - attribute names */
+    .code-block .token.tag .token.attr-name {
+      color: #f59e0b; /* Amber */
+    }
+
+    /* JSX/TSX - attribute values */
+    .code-block .token.tag .token.attr-value {
+      color: #10b981; /* Green */
+    }
+
+    /* JSX/TSX - spread operator */
+    .code-block .token.tag .token.spread {
+      color: #8b5cf6; /* Purple secondary */
+    }
+
+    /* TypeScript specific */
+    .code-block .token.builtin {
+      color: #22d3ee; /* Cyan for built-in types */
+    }
+
+    /* Type annotations */
+    .code-block .token.type-annotation {
+      color: #3b82f6; /* Blue */
+    }
+
+    /* Template strings */
+    .code-block .token.template-string {
+      color: #10b981; /* Green */
+    }
+
+    .code-block .token.template-string .token.interpolation {
+      color: #f59e0b; /* Amber */
+    }
+
+    .code-block .token.template-string .token.interpolation-punctuation {
+      color: #a855f7; /* Purple */
+    }
+
+    /* Action Buttons */
+    .code-panel-actions {
+      padding: 1rem 1.25rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .btn-regenerate {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.625rem 1rem;
+      background: rgba(99, 102, 241, 0.2);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 6px;
+      color: #a5b4fc;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-regenerate:hover {
+      background: rgba(99, 102, 241, 0.3);
+    }
+
+    /* Quota Display */
+    .quota-display {
+      padding: 0.75rem 1.25rem;
+      background: rgba(0, 0, 0, 0.2);
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .quota-text {
+      font-size: 0.75rem;
+      color: #71717a;
+    }
+
+    .quota-warning {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.75rem;
+      color: #f59e0b;
+    }
   `]
 })
 export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
@@ -1256,6 +1767,7 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   isCodePanelOpen = false;
   isGenerating = false;
   generatedCode = '';
+  highlightedCode = ''; // Feature #121: Syntax highlighted HTML
   componentName = 'GeneratedComponent';
   generationError: string | null = null;
   // Quota tracking (per spec: "X / Y generations remaining")
@@ -1969,25 +2481,305 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   /**
-   * Handle Generate Component button click (Feature #117)
+   * Handle Generate Component button click (Feature #117 + #118)
    * Per spec: Exports selection to PNG and initiates AI code generation
-   * Full implementation in Feature #118+
+   *
+   * Feature #118 verification steps:
+   * 1. Select sketch elements on canvas
+   * 2. Click 'Generate Component' button
+   * 3. Verify loading state on selection
+   * 4. Verify API request sent
+   * 5. Wait for completion (~10s)
    */
   onGenerateComponent(): void {
-    if (!this.canvas || this.selectedElementCount === 0) {
-      console.log('[Generate] No elements selected');
+    if (!this.canvas || !this.board || this.selectedElementCount === 0) {
+      console.log('[Generate] No elements selected or canvas not ready');
+      return;
+    }
+
+    // Don't allow generation while already generating
+    if (this.isGenerating) {
+      console.log('[Generate] Generation already in progress');
+      this.toastService.warning('Generation already in progress...', 2000);
       return;
     }
 
     const activeObjects = this.canvas.getActiveObjects();
-    console.log('[Generate] Generating component from', activeObjects.length, 'selected elements');
+    console.log('[Generate] Starting component generation from', activeObjects.length, 'selected elements');
 
-    // Show toast notification that generation is starting
-    this.toastService.info('Preparing to generate component...', 3000);
+    // Step 1: Set loading state
+    this.isGenerating = true;
+    this.generationError = null;
 
-    // TODO (Feature #118+): Export selection to PNG and send to AI service
-    // For now, just log the action
-    console.log('[Generate] Selected elements:', activeObjects.map(obj => (obj as any)._elementId || 'unknown'));
+    // Step 2: Show loading toast
+    this.toastService.info('Exporting selection and preparing for AI analysis...', 3000);
+
+    // Step 3: Export selection to PNG (base64)
+    try {
+      const imageBase64 = this.exportSelectionToBase64(activeObjects);
+      if (!imageBase64) {
+        throw new Error('Failed to export selection to image');
+      }
+
+      console.log('[Generate] Selection exported to PNG, size:', Math.round(imageBase64.length / 1024), 'KB');
+
+      // Step 4: Generate component name suggestion based on selection
+      const componentName = this.generateComponentNameSuggestion(activeObjects);
+      console.log('[Generate] Suggested component name:', componentName);
+
+      // Step 5: Call generation service (using mock for now since AI APIs may not be configured)
+      // In production this would use: this.generationService.generateComponent(...)
+      this.generationService.generateComponentMock({
+        boardId: this.board.id,
+        imageBase64,
+        componentName,
+        options: {
+          responsive: true,
+          includePlaceholders: false
+        }
+      }).subscribe({
+        next: (result) => {
+          console.log('[Generate] Generation completed successfully:', result.componentName);
+          this.isGenerating = false;
+          this.generatedCode = result.code;
+          this.highlightedCode = this.highlightCode(result.code); // Feature #121: Apply syntax highlighting
+          this.componentName = result.componentName;
+          this.isCodePanelOpen = true;
+          this.generationsUsed++;
+
+          // Show success toast per spec: "Toast: Generation complete (with 'View' button, 5s)"
+          this.toastService.success(
+            `Component "${result.componentName}" generated in ${(result.durationMs / 1000).toFixed(1)}s`,
+            5000
+          );
+        },
+        error: (error) => {
+          console.error('[Generate] Generation failed:', error);
+          this.isGenerating = false;
+          this.generationError = error.message || 'Generation failed. Please try again.';
+
+          // Show error toast per spec: "Toast: Generation failed (stays until dismissed)"
+          this.toastService.error(this.generationError, 0); // 0 = doesn't auto-dismiss
+        }
+      });
+
+    } catch (error: any) {
+      console.error('[Generate] Export failed:', error);
+      this.isGenerating = false;
+      this.generationError = error.message || 'Failed to export selection';
+      this.toastService.error('Failed to export selection for generation', 5000);
+    }
+  }
+
+  /**
+   * Export selected elements to a base64-encoded PNG image
+   * Per spec: Export selection to PNG (base64) for AI analysis
+   */
+  private exportSelectionToBase64(selectedObjects: fabric.FabricObject[]): string | null {
+    if (!this.canvas || selectedObjects.length === 0) {
+      return null;
+    }
+
+    try {
+      // Get the bounding box of all selected objects
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+      for (const obj of selectedObjects) {
+        const boundingRect = obj.getBoundingRect();
+        minX = Math.min(minX, boundingRect.left);
+        minY = Math.min(minY, boundingRect.top);
+        maxX = Math.max(maxX, boundingRect.left + boundingRect.width);
+        maxY = Math.max(maxY, boundingRect.top + boundingRect.height);
+      }
+
+      // Add padding around the selection
+      const padding = 20;
+      minX -= padding;
+      minY -= padding;
+      maxX += padding;
+      maxY += padding;
+
+      // Calculate dimensions
+      const width = maxX - minX;
+      const height = maxY - minY;
+
+      // Create a temporary canvas for export
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const ctx = tempCanvas.getContext('2d');
+
+      if (!ctx) {
+        console.error('[Generate] Failed to get 2D context for export');
+        return null;
+      }
+
+      // Fill with white background (for better AI recognition)
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+
+      // Use Fabric.js toDataURL with multiplier for better quality
+      // Export just the selected area
+      const dataUrl = this.canvas.toDataURL({
+        format: 'png',
+        quality: 1.0,
+        left: minX,
+        top: minY,
+        width,
+        height,
+        multiplier: 2 // Higher quality export
+      });
+
+      // Extract base64 data (remove data:image/png;base64, prefix)
+      const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+      console.log('[Generate] Exported selection area:', { width, height, base64Length: base64.length });
+
+      return base64;
+    } catch (error) {
+      console.error('[Generate] Error exporting selection:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Generate a suggested component name based on selected elements
+   * Uses heuristics to suggest meaningful names
+   */
+  private generateComponentNameSuggestion(selectedObjects: fabric.FabricObject[]): string {
+    // Count element types
+    const typeCounts: Record<string, number> = {};
+
+    for (const obj of selectedObjects) {
+      const type = (obj as any).type || 'unknown';
+      typeCounts[type] = (typeCounts[type] || 0) + 1;
+    }
+
+    console.log('[Generate] Element type counts:', typeCounts);
+
+    // Generate name based on dominant type
+    if (typeCounts['i-text'] || typeCounts['text']) {
+      return 'TextCard';
+    }
+    if (typeCounts['rect'] && selectedObjects.length > 3) {
+      return 'CardLayout';
+    }
+    if (typeCounts['rect']) {
+      return 'BoxComponent';
+    }
+    if (typeCounts['circle'] || typeCounts['ellipse']) {
+      return 'CircleWidget';
+    }
+    if (typeCounts['path']) {
+      return 'SketchElement';
+    }
+    if (selectedObjects.length > 5) {
+      return 'ComplexLayout';
+    }
+
+    return 'GeneratedComponent';
+  }
+
+  /**
+   * Close the code panel (Feature #119)
+   * Per spec: Close button (X) to dismiss panel
+   */
+  closeCodePanel(): void {
+    this.isCodePanelOpen = false;
+    console.log('[CodePanel] Panel closed');
+  }
+
+  /**
+   * Copy the generated code to clipboard (Feature #119)
+   * Per spec: Copy code button (one-click, success toast)
+   */
+  copyGeneratedCode(): void {
+    if (!this.generatedCode) {
+      this.toastService.warning('No code to copy', 2000);
+      return;
+    }
+
+    navigator.clipboard.writeText(this.generatedCode).then(() => {
+      console.log('[CodePanel] Code copied to clipboard');
+      this.toastService.success('Code copied to clipboard!', 2000);
+    }).catch((error) => {
+      console.error('[CodePanel] Failed to copy code:', error);
+      this.toastService.error('Failed to copy code', 3000);
+    });
+  }
+
+  /**
+   * Apply syntax highlighting to code using Prism.js (Feature #121)
+   * Per spec: Code in panel has proper syntax highlighting
+   * Uses TSX grammar for TypeScript + JSX highlighting
+   */
+  highlightCode(code: string): string {
+    if (!code) {
+      return '';
+    }
+    try {
+      // Use TSX grammar for React + TypeScript components
+      const highlighted = Prism.highlight(code, Prism.languages['tsx'], 'tsx');
+      console.log('[CodePanel] Syntax highlighting applied successfully');
+      return highlighted;
+    } catch (error) {
+      console.warn('[CodePanel] Syntax highlighting failed, returning plain code:', error);
+      // Fallback to HTML-escaped plain text
+      return code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+  }
+
+  /**
+   * Enforce PascalCase component name format (Feature #119)
+   * Per spec: Component name (editable, PascalCase enforced)
+   */
+  enforceComponentNameFormat(): void {
+    if (!this.componentName) {
+      this.componentName = 'GeneratedComponent';
+      return;
+    }
+
+    // Remove any non-alphanumeric characters except underscores
+    let cleanName = this.componentName.replace(/[^a-zA-Z0-9_]/g, '');
+
+    // If starts with number, prefix with 'Component'
+    if (/^[0-9]/.test(cleanName)) {
+      cleanName = 'Component' + cleanName;
+    }
+
+    // Convert to PascalCase
+    // Split by underscores or when a lowercase is followed by uppercase
+    const words = cleanName.split(/[_]|(?<=[a-z])(?=[A-Z])/);
+    this.componentName = words
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join('');
+
+    // Ensure it's not empty after processing
+    if (!this.componentName) {
+      this.componentName = 'GeneratedComponent';
+    }
+
+    console.log('[CodePanel] Component name formatted:', this.componentName);
+  }
+
+  /**
+   * Retry failed generation (Feature #119)
+   */
+  retryGeneration(): void {
+    console.log('[CodePanel] Retrying generation...');
+    this.generationError = null;
+    this.onGenerateComponent();
+  }
+
+  /**
+   * Regenerate the component with current selection (Feature #119)
+   * Per spec: Regenerate button
+   */
+  regenerateComponent(): void {
+    console.log('[CodePanel] Regenerating component...');
+    // Close current panel and regenerate
+    this.generatedCode = '';
+    this.generationError = null;
+    this.onGenerateComponent();
   }
 
   /**

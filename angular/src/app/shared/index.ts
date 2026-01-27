@@ -5,3 +5,4 @@ export * from './components/toast-container.component';
 export * from './services/connection.service';
 export * from './services/toast.service';
 export * from './services/offline-queue.service';
+export * from './services/generation.service';
