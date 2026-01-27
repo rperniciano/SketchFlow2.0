@@ -95,23 +95,86 @@ interface Participant {
 
         <!-- Participant Avatars (Feature #113: Participant avatars display in toolbar) -->
         <!-- Per spec: Participant avatars in toolbar (max 5 shown + overflow count) -->
-        <div class="participant-avatars" *ngIf="board">
-          <!-- Show first 5 participants -->
+        <!-- Feature #114: Clicking opens participant panel showing all users -->
+        <div class="participant-avatars-wrapper" *ngIf="board">
+          <button
+            class="participant-avatars-btn"
+            (click)="toggleParticipantPanel()"
+            [attr.aria-expanded]="isParticipantPanelOpen"
+            aria-haspopup="true"
+            aria-label="Show participants">
+            <div class="participant-avatars">
+              <!-- Show first 5 participants -->
+              <div
+                *ngFor="let participant of getDisplayedParticipants(); trackBy: trackParticipantById"
+                class="participant-avatar"
+                [style.backgroundColor]="participant.color"
+                [class.self]="participant.isSelf"
+                [title]="participant.name + (participant.isSelf ? ' (You)' : '')">
+                {{ participant.initials }}
+              </div>
+
+              <!-- Overflow count if more than 5 participants -->
+              <div
+                *ngIf="getOverflowCount() > 0"
+                class="participant-overflow"
+                [title]="getOverflowCount() + ' more participants'">
+                +{{ getOverflowCount() }}
+              </div>
+            </div>
+          </button>
+
+          <!-- Participant Panel (Feature #114: Participant panel shows all connected users) -->
+          <!-- Per spec: Panel lists all participants with status (name, color, online status) -->
           <div
-            *ngFor="let participant of getDisplayedParticipants(); trackBy: trackParticipantById"
-            class="participant-avatar"
-            [style.backgroundColor]="participant.color"
-            [class.self]="participant.isSelf"
-            [title]="participant.name + (participant.isSelf ? ' (You)' : '')">
-            {{ participant.initials }}
+            class="participant-panel"
+            *ngIf="isParticipantPanelOpen"
+            role="dialog"
+            aria-label="Participants panel">
+            <div class="participant-panel-header">
+              <h3>Participants</h3>
+              <span class="participant-count">{{ getAllParticipants().length }}</span>
+            </div>
+
+            <!-- Empty state when solo (per spec: "Just you here" + share prompt) -->
+            <div class="participant-panel-empty" *ngIf="getAllParticipants().length <= 1">
+              <p class="empty-message">Just you here</p>
+              <p class="empty-hint" *ngIf="!isGuest">Share this board to collaborate with others</p>
+            </div>
+
+            <!-- Participant list -->
+            <div class="participant-panel-list" *ngIf="getAllParticipants().length > 0">
+              <div
+                *ngFor="let participant of getAllParticipants(); trackBy: trackParticipantById"
+                class="participant-item"
+                [class.self]="participant.isSelf">
+                <!-- Avatar with color -->
+                <div
+                  class="participant-item-avatar"
+                  [style.backgroundColor]="participant.color">
+                  {{ participant.initials }}
+                </div>
+                <!-- Name and status -->
+                <div class="participant-item-info">
+                  <span class="participant-item-name">
+                    {{ participant.name }}
+                    <span class="self-indicator" *ngIf="participant.isSelf">(You)</span>
+                  </span>
+                  <!-- Online status indicator (per spec: Verify online status indicators shown) -->
+                  <span class="participant-item-status online">
+                    <span class="status-dot"></span>
+                    Online
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <!-- Overflow count if more than 5 participants -->
+          <!-- Backdrop to close panel when clicking outside -->
           <div
-            *ngIf="getOverflowCount() > 0"
-            class="participant-overflow"
-            [title]="getOverflowCount() + ' more participants'">
-            +{{ getOverflowCount() }}
+            class="participant-panel-backdrop"
+            *ngIf="isParticipantPanelOpen"
+            (click)="closeParticipantPanel()">
           </div>
         </div>
 
@@ -474,6 +537,197 @@ interface Participant {
     .participant-overflow:hover {
       background: rgba(99, 102, 241, 0.8);
       transform: scale(1.1);
+    }
+
+    /* Participant Avatars Wrapper (Feature #114) */
+    .participant-avatars-wrapper {
+      position: relative;
+    }
+
+    .participant-avatars-btn {
+      background: transparent;
+      border: none;
+      padding: 4px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .participant-avatars-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .participant-avatars-btn:focus {
+      outline: none;
+    }
+
+    .participant-avatars-btn:focus-visible {
+      outline: 2px solid #6366f1;
+      outline-offset: 2px;
+    }
+
+    /* Participant Panel (Feature #114: Participant panel shows all connected users) */
+    .participant-panel {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      width: 280px;
+      max-height: 400px;
+      background: rgba(26, 26, 37, 0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      z-index: 1000;
+      overflow: hidden;
+      animation: slideDown 0.2s ease;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .participant-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .participant-panel-header h3 {
+      margin: 0;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .participant-count {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #a1a1aa;
+      background: rgba(99, 102, 241, 0.2);
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
+    /* Empty state (per spec: "Just you here" + share prompt) */
+    .participant-panel-empty {
+      padding: 1.5rem 1rem;
+      text-align: center;
+    }
+
+    .participant-panel-empty .empty-message {
+      margin: 0 0 0.5rem 0;
+      color: #a1a1aa;
+      font-size: 0.875rem;
+    }
+
+    .participant-panel-empty .empty-hint {
+      margin: 0;
+      color: #71717a;
+      font-size: 0.75rem;
+    }
+
+    /* Participant list */
+    .participant-panel-list {
+      max-height: 320px;
+      overflow-y: auto;
+      padding: 0.5rem;
+    }
+
+    .participant-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem;
+      border-radius: 8px;
+      transition: background 0.2s ease;
+    }
+
+    .participant-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .participant-item.self {
+      background: rgba(99, 102, 241, 0.1);
+    }
+
+    .participant-item-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #ffffff;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+
+    .participant-item.self .participant-item-avatar {
+      border: 2px solid #ffffff;
+    }
+
+    .participant-item-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .participant-item-name {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .self-indicator {
+      font-weight: 400;
+      color: #a1a1aa;
+      font-size: 0.75rem;
+    }
+
+    /* Online status indicator (per spec: Verify online status indicators shown) */
+    .participant-item-status {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.75rem;
+      color: #71717a;
+    }
+
+    .participant-item-status.online {
+      color: #10b981;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: currentColor;
+    }
+
+    /* Backdrop for closing panel */
+    .participant-panel-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 999;
     }
 
     .guest-badge {
@@ -953,6 +1207,9 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // Maximum avatars to display before showing overflow
   private readonly MAX_DISPLAYED_AVATARS = 5;
+
+  // Participant panel state (Feature #114: Participant panel shows all connected users)
+  isParticipantPanelOpen = false;
 
   colors: CanvasColors[] = [
     { name: 'Black', value: '#000000' },
@@ -1508,10 +1765,11 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // ========== Participant Avatars (Feature #113) ==========
   /**
-   * Get all participants including self (Feature #113)
+   * Get all participants including self (Feature #113, #114)
    * Per spec: Participant avatars in toolbar (max 5 shown + overflow count)
+   * Per spec: Panel lists all participants with status (name, color, online status)
    */
-  private getAllParticipants(): Participant[] {
+  getAllParticipants(): Participant[] {
     const participants: Participant[] = [];
 
     // Add self first (always displayed)
@@ -1600,6 +1858,23 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
    */
   trackParticipantById(index: number, participant: Participant): string {
     return participant.id;
+  }
+
+  /**
+   * Toggle participant panel visibility (Feature #114)
+   * Per spec: Participant panel shows all connected users
+   */
+  toggleParticipantPanel(): void {
+    this.isParticipantPanelOpen = !this.isParticipantPanelOpen;
+    console.log('[Participants] Panel toggled:', this.isParticipantPanelOpen ? 'open' : 'closed');
+  }
+
+  /**
+   * Close participant panel (Feature #114)
+   */
+  closeParticipantPanel(): void {
+    this.isParticipantPanelOpen = false;
+    console.log('[Participants] Panel closed');
   }
 
   /**
