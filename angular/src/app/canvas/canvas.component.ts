@@ -585,17 +585,11 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
           ? Math.max(...elements.map(e => e.zIndex)) + 1
           : 0;
 
-        if (elements.length === 0) {
-          // Add demo elements for testing when no elements exist
-          this.addDemoElements();
-        } else {
-          this.renderElements(elements);
-        }
+        // Only render elements from database - no demo elements
+        this.renderElements(elements);
       },
       error: (err) => {
         console.error('Failed to load elements:', err);
-        // Add demo elements for testing when API is not available
-        this.addDemoElements();
       }
     });
   }
