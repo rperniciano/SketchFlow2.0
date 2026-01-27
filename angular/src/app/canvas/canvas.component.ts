@@ -366,17 +366,19 @@ interface RemoteSelection {
           <!-- Per spec: "Generate Component" button appears above selected region/elements -->
           <!-- Per spec: Loading state on selection during generation (~10s) -->
           <!-- Per spec: Keyboard shortcut Ctrl+G triggers generation when selection active -->
+          <!-- Feature #131: Guest quota limited to 5 per session - disable button when quota reached -->
           <button
             *ngIf="showGenerateButton && selectedElementCount > 0"
             class="generate-component-btn"
             [class.generating]="isGenerating"
-            [disabled]="isGenerating"
+            [class.quota-exceeded]="isQuotaExceeded()"
+            [disabled]="isGenerating || isQuotaExceeded()"
             [style.left.px]="generateButtonPosition.left"
             [style.top.px]="generateButtonPosition.top"
             (click)="onGenerateComponent()"
-            [title]="isGenerating ? 'Generating...' : 'Generate Component (Ctrl+G)'">
-            <i class="bi" [class.bi-magic]="!isGenerating" [class.bi-arrow-repeat]="isGenerating" [class.spin]="isGenerating"></i>
-            {{ isGenerating ? 'Generating...' : 'Generate Component' }}
+            [title]="getGenerateButtonTitle()">
+            <i class="bi" [class.bi-magic]="!isGenerating && !isQuotaExceeded()" [class.bi-arrow-repeat]="isGenerating" [class.bi-x-circle]="isQuotaExceeded() && !isGenerating" [class.spin]="isGenerating"></i>
+            {{ getGenerateButtonLabel() }}
           </button>
         </div>
 
@@ -479,6 +481,33 @@ interface RemoteSelection {
                 </button>
               </div>
               <pre class="code-block"><code class="language-tsx" [innerHTML]="highlightedCode"></code></pre>
+            </div>
+
+            <!-- Generation Options (Feature #126, #127: Responsive and Include placeholders toggles) -->
+            <!-- Per spec: Options toggles (responsive, placeholders) -->
+            <div class="generation-options">
+              <div class="option-group">
+                <label class="option-toggle">
+                  <input
+                    type="checkbox"
+                    [(ngModel)]="responsiveOption"
+                    (change)="onOptionChange('responsive')">
+                  <span class="toggle-slider"></span>
+                  <span class="option-label">Responsive</span>
+                </label>
+                <span class="option-hint">Generate responsive styles</span>
+              </div>
+              <div class="option-group">
+                <label class="option-toggle">
+                  <input
+                    type="checkbox"
+                    [(ngModel)]="includePlaceholdersOption"
+                    (change)="onOptionChange('placeholders')">
+                  <span class="toggle-slider"></span>
+                  <span class="option-label">Include Placeholders</span>
+                </label>
+                <span class="option-hint">Add placeholder text content</span>
+              </div>
             </div>
 
             <!-- Action Buttons -->
@@ -1189,6 +1218,21 @@ interface RemoteSelection {
       cursor: not-allowed;
     }
 
+    /* Feature #131: Quota exceeded state - disabled with red styling */
+    .generate-component-btn.quota-exceeded {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.7) 0%, rgba(185, 28, 28, 0.7) 100%);
+      cursor: not-allowed;
+      opacity: 0.9;
+    }
+
+    .generate-component-btn.quota-exceeded:hover {
+      transform: none;
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.7) 0%, rgba(185, 28, 28, 0.7) 100%);
+      box-shadow:
+        0 4px 12px rgba(239, 68, 68, 0.4),
+        0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
     /* Spin animation for loading icon */
     .generate-component-btn i.spin {
       animation: spin 1s linear infinite;
@@ -1824,6 +1868,85 @@ interface RemoteSelection {
       color: #a855f7; /* Purple */
     }
 
+    /* Generation Options (Feature #126, #127: Responsive and Include placeholders toggles) */
+    .generation-options {
+      padding: 1rem 1.25rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .option-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .option-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .option-toggle input[type="checkbox"] {
+      /* Hide default checkbox but keep accessible */
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      background: rgba(113, 113, 122, 0.4);
+      border-radius: 10px;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+    }
+
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background: #a1a1aa;
+      border-radius: 50%;
+      transition: all 0.2s ease;
+    }
+
+    .option-toggle input:checked + .toggle-slider {
+      background: rgba(99, 102, 241, 0.6);
+    }
+
+    .option-toggle input:checked + .toggle-slider::before {
+      transform: translateX(16px);
+      background: #6366f1;
+    }
+
+    .option-toggle input:focus-visible + .toggle-slider {
+      outline: 2px solid rgba(99, 102, 241, 0.5);
+      outline-offset: 2px;
+    }
+
+    .option-label {
+      font-size: 0.875rem;
+      color: #ffffff;
+      font-weight: 500;
+    }
+
+    .option-hint {
+      font-size: 0.75rem;
+      color: #71717a;
+      margin-left: 44px; /* Align with label text (36px toggle + 8px gap) */
+    }
+
     /* Action Buttons */
     .code-panel-actions {
       padding: 1rem 1.25rem;
@@ -1928,6 +2051,11 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   // Quota tracking (per spec: "X / Y generations remaining")
   generationsUsed = 0;
   generationsLimit = 30; // Default for authenticated users (per spec)
+
+  // Generation Options (Feature #126, #127: Responsive and Include placeholders toggles)
+  // Per spec: Generation options: Responsive (toggle), Include placeholders (toggle)
+  responsiveOption = true; // Default: enabled
+  includePlaceholdersOption = false; // Default: disabled
 
   // Live Preview state (Feature #123: Live preview renders generated component)
   // Per spec: Sandboxed iframe shows component preview
@@ -2665,6 +2793,23 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
+    // Feature #131: Check quota before generating
+    if (this.isQuotaExceeded()) {
+      console.log('[Generate] Quota exceeded:', this.generationsUsed, '/', this.generationsLimit);
+      if (this.isGuest) {
+        this.toastService.warning(
+          `You've reached your limit of ${this.generationsLimit} generations per session. Register for more!`,
+          5000
+        );
+      } else {
+        this.toastService.warning(
+          `You've reached your limit of ${this.generationsLimit} generations per month.`,
+          5000
+        );
+      }
+      return;
+    }
+
     const activeObjects = this.canvas.getActiveObjects();
     console.log('[Generate] Starting component generation from', activeObjects.length, 'selected elements');
 
@@ -2690,13 +2835,15 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
 
       // Step 5: Call generation service (using mock for now since AI APIs may not be configured)
       // In production this would use: this.generationService.generateComponent(...)
+      // Feature #126, #127: Pass toggle options to generation service
+      console.log('[Generate] Options:', { responsive: this.responsiveOption, includePlaceholders: this.includePlaceholdersOption });
       this.generationService.generateComponentMock({
         boardId: this.board.id,
         imageBase64,
         componentName,
         options: {
-          responsive: true,
-          includePlaceholders: false
+          responsive: this.responsiveOption,
+          includePlaceholders: this.includePlaceholdersOption
         }
       }).subscribe({
         next: (result) => {
@@ -2708,6 +2855,12 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
           this.originalComponentName = result.componentName; // Feature #122: Track original for code updates
           this.isCodePanelOpen = true;
           this.generationsUsed++;
+
+          // Feature #131: Save guest generation count to localStorage
+          if (this.isGuest) {
+            this.saveGuestGenerationCount();
+            console.log('[Quota] Guest generations:', this.generationsUsed, '/', this.generationsLimit);
+          }
 
           // Feature #123: Update live preview with generated code
           this.updatePreview();
@@ -2851,6 +3004,20 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   closeCodePanel(): void {
     this.isCodePanelOpen = false;
     console.log('[CodePanel] Panel closed');
+  }
+
+  /**
+   * Handle generation option toggle changes (Feature #126, #127)
+   * Per spec: Generation options: Responsive (toggle), Include placeholders (toggle)
+   * Logs the option change for debugging and future regeneration
+   */
+  onOptionChange(option: 'responsive' | 'placeholders'): void {
+    if (option === 'responsive') {
+      console.log('[CodePanel] Responsive option changed:', this.responsiveOption);
+    } else if (option === 'placeholders') {
+      console.log('[CodePanel] Include placeholders option changed:', this.includePlaceholdersOption);
+    }
+    // Note: Changes will take effect on next regeneration
   }
 
   /**
@@ -5192,6 +5359,9 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
         return;
       }
 
+      // Feature #131: Initialize guest quota (5 generations per session per spec)
+      this.initializeGuestQuota();
+
       // Load board using share token (anonymous endpoint)
       this.loadBoardByShareToken(this.guestSession.shareToken);
     } catch (e) {
@@ -5199,6 +5369,80 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       this.error = 'Invalid guest session. Please join via a share link.';
       this.isLoading = false;
     }
+  }
+
+  /**
+   * Initialize guest generation quota (Feature #131: Guest quota limited to 5 per session)
+   * Per spec: "Guest: 5 generations per browser session"
+   * Uses localStorage to persist generation count across page refreshes within the same session
+   */
+  private initializeGuestQuota(): void {
+    // Set guest limit to 5 per spec
+    this.generationsLimit = 5;
+    console.log('[Quota] Initializing guest quota: limit = 5');
+
+    // Load used generations from localStorage (tied to guest session)
+    const guestId = this.guestSession?.guestId;
+    if (guestId) {
+      const storageKey = `sketchflow_guest_generations_${guestId}`;
+      const storedCount = localStorage.getItem(storageKey);
+      if (storedCount) {
+        this.generationsUsed = parseInt(storedCount, 10) || 0;
+        console.log('[Quota] Loaded guest generation count:', this.generationsUsed);
+      } else {
+        this.generationsUsed = 0;
+        console.log('[Quota] New guest session, starting with 0 generations');
+      }
+    }
+  }
+
+  /**
+   * Save guest generation count to localStorage (Feature #131)
+   * Called after each successful generation for guests
+   */
+  private saveGuestGenerationCount(): void {
+    if (!this.isGuest || !this.guestSession?.guestId) return;
+
+    const storageKey = `sketchflow_guest_generations_${this.guestSession.guestId}`;
+    localStorage.setItem(storageKey, this.generationsUsed.toString());
+    console.log('[Quota] Saved guest generation count:', this.generationsUsed);
+  }
+
+  /**
+   * Check if generation quota has been exceeded (Feature #131)
+   * Per spec: "At limit: Generate button disabled, upgrade/wait prompt"
+   */
+  isQuotaExceeded(): boolean {
+    return this.generationsUsed >= this.generationsLimit;
+  }
+
+  /**
+   * Get the appropriate title for the Generate button (Feature #131)
+   */
+  getGenerateButtonTitle(): string {
+    if (this.isGenerating) {
+      return 'Generating...';
+    }
+    if (this.isQuotaExceeded()) {
+      if (this.isGuest) {
+        return `Limit reached (${this.generationsLimit} generations per session). Register for more!`;
+      }
+      return `Limit reached (${this.generationsLimit} generations per month). Upgrade for more!`;
+    }
+    return `Generate Component (Ctrl+G) - ${this.generationsLimit - this.generationsUsed} remaining`;
+  }
+
+  /**
+   * Get the appropriate label for the Generate button (Feature #131)
+   */
+  getGenerateButtonLabel(): string {
+    if (this.isGenerating) {
+      return 'Generating...';
+    }
+    if (this.isQuotaExceeded()) {
+      return 'Limit Reached';
+    }
+    return 'Generate Component';
   }
 
   loadBoardByShareToken(shareToken: string): void {
