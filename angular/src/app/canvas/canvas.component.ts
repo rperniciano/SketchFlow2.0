@@ -652,6 +652,11 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       }
     });
 
+    // Set up mouse wheel zoom handler
+    this.canvas.on('mouse:wheel', (opt) => {
+      this.handleMouseWheelZoom(opt.e as WheelEvent);
+    });
+
     // Start auto-save timer (5-second interval per spec)
     this.startAutoSaveTimer();
   }
@@ -1261,6 +1266,27 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
+    // Handle Zoom In: Ctrl++ or Ctrl+=
+    if ((event.ctrlKey || event.metaKey) && (event.key === '+' || event.key === '=')) {
+      event.preventDefault();
+      this.zoomIn();
+      return;
+    }
+
+    // Handle Zoom Out: Ctrl+-
+    if ((event.ctrlKey || event.metaKey) && event.key === '-') {
+      event.preventDefault();
+      this.zoomOut();
+      return;
+    }
+
+    // Handle Reset Zoom: Ctrl+0
+    if ((event.ctrlKey || event.metaKey) && event.key === '0') {
+      event.preventDefault();
+      this.resetZoom();
+      return;
+    }
+
     // Skip tool shortcuts if editing text
     if (isEditingText) {
       return;
@@ -1648,6 +1674,90 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     } finally {
       this.isUndoRedoAction = false;
     }
+  }
+
+  /**
+   * Zoom in by one step (Ctrl++ or zoom in button)
+   * Increases zoom level by ZOOM_STEP (10%)
+   */
+  zoomIn(): void {
+    if (!this.canvas) return;
+
+    const newZoom = Math.min(this.zoomLevel + this.ZOOM_STEP, this.MAX_ZOOM);
+    this.setZoom(newZoom);
+    console.log(`[Canvas] Zoom in: ${Math.round(this.zoomLevel * 100)}%`);
+  }
+
+  /**
+   * Zoom out by one step (Ctrl+- or zoom out button)
+   * Decreases zoom level by ZOOM_STEP (10%)
+   */
+  zoomOut(): void {
+    if (!this.canvas) return;
+
+    const newZoom = Math.max(this.zoomLevel - this.ZOOM_STEP, this.MIN_ZOOM);
+    this.setZoom(newZoom);
+    console.log(`[Canvas] Zoom out: ${Math.round(this.zoomLevel * 100)}%`);
+  }
+
+  /**
+   * Reset zoom to 100% (Ctrl+0)
+   */
+  resetZoom(): void {
+    if (!this.canvas) return;
+
+    this.setZoom(1);
+    console.log('[Canvas] Zoom reset to 100%');
+  }
+
+  /**
+   * Set the canvas zoom level
+   * @param zoom - The new zoom level (0.1 to 10)
+   */
+  private setZoom(zoom: number): void {
+    if (!this.canvas) return;
+
+    // Clamp zoom to valid range
+    const clampedZoom = Math.max(this.MIN_ZOOM, Math.min(this.MAX_ZOOM, zoom));
+
+    // Get canvas center point for zoom
+    const center = this.canvas.getCenterPoint();
+
+    // Apply zoom centered on canvas center
+    this.canvas.zoomToPoint(center, clampedZoom);
+    this.zoomLevel = clampedZoom;
+
+    this.canvas.requestRenderAll();
+  }
+
+  /**
+   * Handle mouse wheel zoom
+   * @param event - The wheel event
+   */
+  private handleMouseWheelZoom(event: WheelEvent): void {
+    if (!this.canvas) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const delta = event.deltaY;
+    let newZoom = this.zoomLevel;
+
+    if (delta < 0) {
+      // Scroll up = zoom in
+      newZoom = Math.min(this.zoomLevel * 1.1, this.MAX_ZOOM);
+    } else {
+      // Scroll down = zoom out
+      newZoom = Math.max(this.zoomLevel / 1.1, this.MIN_ZOOM);
+    }
+
+    // Get the point under the mouse for zoom centering
+    const pointer = this.canvas.getViewportPoint(event);
+    this.canvas.zoomToPoint(pointer, newZoom);
+    this.zoomLevel = newZoom;
+
+    this.canvas.requestRenderAll();
+    console.log(`[Canvas] Mouse wheel zoom: ${Math.round(this.zoomLevel * 100)}%`);
   }
 
   loadGuestSession(boardId: string | null): void {
