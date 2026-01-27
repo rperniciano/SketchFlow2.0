@@ -41,6 +41,7 @@ using Volo.Abp.Studio.Client.AspNetCore;
 using Volo.Abp.Security.Claims;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Identity;
+using SketchFlow.Hubs;
 
 namespace SketchFlow;
 
@@ -123,6 +124,21 @@ public class SketchFlowHttpApiHostModule : AbpModule
         ConfigureSwagger(context, configuration);
         ConfigureVirtualFileSystem(context);
         ConfigureCors(context, configuration);
+        ConfigureSignalR(context);
+    }
+
+    private void ConfigureSignalR(ServiceConfigurationContext context)
+    {
+        // Add SignalR services for real-time collaboration
+        context.Services.AddSignalR(options =>
+        {
+            // Enable detailed errors in development for debugging
+            options.EnableDetailedErrors = true;
+            // Keep alive interval for connection stability
+            options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+            // Client timeout (how long to wait for client response)
+            options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+        });
     }
 
     private void ConfigureStudio(IHostEnvironment hostingEnvironment)
@@ -314,6 +330,11 @@ public class SketchFlowHttpApiHostModule : AbpModule
         });
         app.UseAuditing();
         app.UseAbpSerilogEnrichers();
-        app.UseConfiguredEndpoints();
+        app.UseConfiguredEndpoints(endpoints =>
+        {
+            // Map SignalR hub for real-time board collaboration
+            // Per spec: SignalR connection on board join
+            endpoints.MapHub<BoardHub>("/signalr/board");
+        });
     }
 }

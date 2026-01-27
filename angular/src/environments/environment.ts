@@ -30,4 +30,6 @@ export const environment = {
       rootNamespace: 'AbpAccountPublic',
     },
   },
+  // SignalR hub URL (separate from API when needed for development)
+  signalRUrl: 'http://localhost:5001',
 } as Environment;
