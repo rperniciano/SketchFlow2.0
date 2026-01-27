@@ -2698,3 +2698,132 @@ After browser refresh, the error was gone and the app worked correctly.
 - **27/273 features passing** (~9.9%)
 - Landing page verified end-to-end
 
+---
+
+## Session - 2026-01-27 (Feature #53 - Trash auto-purges after 30 days)
+
+### Context
+- Assigned Feature #53: "Trash auto-purges after 30 days"
+- Description: Boards in trash for 30+ days are automatically deleted
+- Category: Q. Temporal & Timezone
+
+### What Was Accomplished
+
+1. **Implemented Background Worker**:
+   - Created `TrashPurgeBackgroundWorker.cs` in SketchFlow.Application/Boards/
+   - Worker extends `AsyncPeriodicBackgroundWorkerBase` and runs every hour
+   - Queries for soft-deleted boards with DeletionTime > 30 days ago
+   - Performs HardDelete on eligible boards
+   - Proper logging for tracking purge operations
+
+2. **Registered Background Worker**:
+   - Updated `SketchFlowApplicationModule.cs` to depend on `AbpBackgroundWorkersModule`
+   - Added `OnApplicationInitializationAsync` to register the worker
+   - Worker automatically starts when application initializes
+
+3. **Added Manual Purge Trigger**:
+   - Added `TriggerTrashPurgeAsync()` method to `BoardAppService`
+   - Added corresponding interface method to `IBoardAppService`
+   - Allows manual testing of purge functionality
+
+4. **Wrote Unit Test**:
+   - Created `TrashPurgeTests.cs` with test cases for purging boards older than 30 days
+
+### Verification Steps Performed
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Create board and soft delete it | Board in trash | PASS - Created "TrashPurgeTestBoard" |
+| 2. Manually set DeletedAt to 31 days ago | DeletionTime updated | PASS - Set to 2025-12-27 |
+| 3. Trigger cleanup job | Board deleted | PASS - SQL DELETE executed |
+| 4. Verify board is permanently deleted | Not in database | PASS - 0 rows returned |
+| 5. Verify board not in trash or main list | Not visible in UI | PASS - Trash shows only 2 boards |
+
+### Technical Details
+- Background worker runs every 3600000ms (1 hour)
+- Uses ABP's soft-delete filter bypass with `_dataFilter.Disable<ISoftDelete>()`
+- Uses `HardDeleteAsync` for permanent deletion
+- Cutoff calculation: `DateTime.UtcNow.AddDays(-30)`
+
+### Screenshots
+- feature53-trash-after-purge.png - Dashboard showing Trash (2 boards) after purge
+
+### Feature Result
+- **Feature #53: PASSING**
+- All verification steps completed successfully
+- Trash auto-purge mechanism implemented and verified
+
+### Current Progress
+- **25/273 features passing** (~9.2%)
+- Trash auto-purge background job verified
+
+### Environment Status
+- Backend running on http://localhost:44326
+- Frontend running on http://localhost:4200
+- Browser automation working
+- All services operational
+
+---
+
+## Session - 2026-01-27 (Feature #58 - Board card click navigates to canvas)
+
+### Context
+- Assigned Feature #58: "Board card click navigates to canvas"
+- Description: Clicking on a board card opens the canvas view
+- Category: B. Navigation Integrity
+
+### What Was Accomplished
+
+1. **Verified Existing Implementation**:
+   - Dashboard component has `(click)="openBoard(board)"` on board cards
+   - `openBoard()` method uses `router.navigate(['/canvas', board.id])`
+   - Canvas route configured at `canvas/:id` in app.routes.ts
+   - Canvas component properly receives board ID from route params
+
+2. **Full End-to-End Verification with Browser Automation**:
+   - Logged in as admin user
+   - Navigated to dashboard with 6 existing boards
+   - Clicked on "Alpha" board card
+   - Verified URL changed to `/canvas/55c10dc6-d3d2-ae47-d915-3a1f11c482fb`
+   - Verified canvas page loaded with board name and ID displayed
+   - Clicked "Back to Dashboard" button
+   - Clicked on different board "GuestTest55"
+   - Verified URL changed to `/canvas/cd1cb74a-39ac-5b52-dbe1-3a1f11c9a259`
+   - Verified canvas page displayed correct board info
+
+### Feature #58 Verification Checklist
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Navigate to dashboard with boards | Dashboard loads with board cards | PASS - 6 boards visible |
+| 2. Click on a board card | Board card is clickable | PASS - Clicked "Alpha" board |
+| 3. Verify URL changes to canvas route with board ID | URL format: /canvas/{boardId} | PASS |
+| 4. Verify canvas page loads | Canvas page displays board info | PASS |
+
+### Console Errors
+- Only SameSite cookie warning (development environment issue, not a runtime error)
+
+### Screenshots Captured
+- feature58-board-card-click-navigated.png - Canvas page showing "Alpha" board
+- feature58-second-board-click-verified.png - Canvas page showing "GuestTest55" board
+
+### Technical Details
+- Implementation: `angular/src/app/dashboard/dashboard.component.ts` line 160-162
+- Route: `angular/src/app/app.routes.ts` line 16-19
+- Canvas component: `angular/src/app/canvas/canvas.component.ts`
+
+### Feature Result
+- **Feature #58: PASSING**
+- All verification steps completed successfully
+- Board card click navigation works correctly end-to-end
+
+### Current Progress
+- **30/273 features passing** (~11.0%)
+- Board card navigation verified
+
+### Environment Status
+- Backend running on http://localhost:44326/44329
+- Frontend running on http://localhost:4200
+- Browser automation working
+- All services operational
+
