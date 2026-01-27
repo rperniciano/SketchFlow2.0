@@ -57,6 +57,16 @@ interface HistoryEntry {
   zIndex?: number;
 }
 
+// Interface for remote cursor tracking (Feature #106: Remote cursor displays for other participants)
+interface RemoteCursor {
+  connectionId: string;
+  x: number;
+  y: number;
+  color: string;
+  name: string;
+  lastUpdate: number; // Timestamp of last update
+}
+
 @Component({
   selector: 'app-canvas',
   standalone: true,
@@ -212,6 +222,31 @@ interface HistoryEntry {
         <!-- Canvas Area -->
         <div class="canvas-wrapper" #canvasWrapper>
           <canvas #fabricCanvas id="fabricCanvas"></canvas>
+
+          <!-- Remote Cursors Overlay (Feature #106: Remote cursor displays for other participants) -->
+          <!-- Per spec: Remote cursor display (colored, labeled with name) -->
+          <div class="remote-cursors-container">
+            <div
+              *ngFor="let cursor of getRemoteCursorsArray()"
+              class="remote-cursor"
+              [style.left.px]="cursor.x"
+              [style.top.px]="cursor.y"
+              [style.--cursor-color]="cursor.color"
+              [class.stale]="isCursorStale(cursor)">
+              <!-- Cursor pointer SVG -->
+              <svg class="cursor-pointer" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M5.5 3.21V20.8C5.5 21.41 6.21 21.77 6.71 21.41L10.5 18.5L13.5 21.5C13.89 21.89 14.52 21.89 14.91 21.5L16.5 19.91C16.89 19.52 16.89 18.89 16.5 18.5L13.5 15.5L18.29 14.29C18.9 14.08 18.9 13.21 18.29 13L6.71 9.21C6.21 9.08 5.71 9.42 5.71 9.92L5.5 3.21Z"
+                  [attr.fill]="cursor.color"
+                  stroke="white"
+                  stroke-width="1.5"/>
+              </svg>
+              <!-- Name label -->
+              <div class="cursor-label" [style.backgroundColor]="cursor.color">
+                {{ cursor.name || 'Anonymous' }}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -514,6 +549,55 @@ interface HistoryEntry {
       left: 0;
     }
 
+    /* Remote Cursors Overlay (Feature #106: Remote cursor displays for other participants) */
+    .remote-cursors-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none; /* Allow clicks to pass through to canvas */
+      z-index: 100; /* Above canvas but below modals */
+      overflow: hidden;
+    }
+
+    .remote-cursor {
+      position: absolute;
+      pointer-events: none;
+      transition: left 0.05s linear, top 0.05s linear; /* Smooth cursor movement */
+      z-index: 101;
+    }
+
+    .cursor-pointer {
+      display: block;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+      transition: opacity 0.3s ease;
+    }
+
+    .remote-cursor.stale .cursor-pointer {
+      opacity: 0.4; /* Per spec: Remote cursors fade to gray when stale */
+      filter: grayscale(0.7) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    }
+
+    .cursor-label {
+      position: absolute;
+      top: 18px;
+      left: 14px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      color: white;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      transition: opacity 0.3s ease;
+    }
+
+    .remote-cursor.stale .cursor-label {
+      opacity: 0.4;
+      filter: grayscale(0.7);
+    }
+
     .status-bar {
       display: flex;
       align-items: center;
@@ -728,6 +812,26 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   private initialTouchDistance: number | null = null;
   private initialTouchZoom: number | null = null; // Store zoom level when pinch starts (Feature #93)
 
+  // Remote cursor state (Feature #106: Remote cursor displays for other participants)
+  // Per spec: Remote cursor display (colored, labeled with name), Cursor position sync (throttled ~30fps)
+  remoteCursors: Map<string, RemoteCursor> = new Map();
+  private readonly CURSOR_THROTTLE_MS = 33; // ~30fps throttle for cursor updates
+  private lastCursorUpdateTime = 0;
+  private cursorStaleTimeout = 5000; // Mark cursors as stale after 5 seconds of no updates
+  private cursorCleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+  // Cursor colors for remote participants (varied palette)
+  private cursorColors = [
+    '#ef4444', // Red
+    '#f97316', // Orange
+    '#eab308', // Yellow
+    '#22c55e', // Green
+    '#06b6d4', // Cyan
+    '#3b82f6', // Blue
+    '#8b5cf6', // Purple
+    '#ec4899', // Pink
+  ];
+
   colors: CanvasColors[] = [
     { name: 'Black', value: '#000000' },
     { name: 'White', value: '#ffffff' },
@@ -802,6 +906,12 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.autoSaveTimer) {
       clearInterval(this.autoSaveTimer);
       this.autoSaveTimer = null;
+    }
+
+    // Clean up cursor cleanup interval (Feature #106)
+    if (this.cursorCleanupInterval) {
+      clearInterval(this.cursorCleanupInterval);
+      this.cursorCleanupInterval = null;
     }
 
     // Clean up queue subscription (Feature #103)
@@ -911,6 +1021,12 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
 
     console.log('[SignalR] Connecting to board:', this.board.id);
 
+    // Set up cursor event handler BEFORE connecting (Feature #106: Remote cursor displays)
+    this.setupCursorEventHandler();
+
+    // Start cursor cleanup interval to remove stale cursors
+    this.startCursorCleanupInterval();
+
     this.signalRService.connect(this.board.id, guestName)
       .then(() => {
         console.log('[SignalR] Successfully connected to board');
@@ -919,6 +1035,360 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
         console.error('[SignalR] Failed to connect:', error);
         // Connection will retry automatically via the SignalR service
       });
+  }
+
+  /**
+   * Set up event handler for remote cursor movements (Feature #106)
+   * Per spec: Remote cursor display (colored, labeled with name)
+   */
+  private setupCursorEventHandler(): void {
+    this.signalRService.on('OnCursorMoved', (data: { connectionId: string; x: number; y: number; timestamp: string }) => {
+      this.handleRemoteCursorMove(data);
+    });
+
+    // Handle participant join to assign cursor color
+    this.signalRService.on('OnParticipantJoined', (data: { connectionId: string; guestName?: string }) => {
+      console.log('[Cursor] Participant joined:', data.connectionId, data.guestName);
+      // Initialize cursor when participant joins (will be positioned when they move)
+      const color = this.getColorForConnection(data.connectionId);
+      this.remoteCursors.set(data.connectionId, {
+        connectionId: data.connectionId,
+        x: -100, // Start offscreen
+        y: -100,
+        color: color,
+        name: data.guestName || 'User',
+        lastUpdate: Date.now()
+      });
+    });
+
+    // Handle participant leave to remove cursor
+    this.signalRService.on('OnParticipantLeft', (data: { connectionId: string }) => {
+      console.log('[Cursor] Participant left:', data.connectionId);
+      this.remoteCursors.delete(data.connectionId);
+    });
+
+    // Feature #108: Handle element creation from other participants
+    // Per spec: "Drawing an element appears for all users"
+    this.signalRService.on('OnElementCreated', (data: { id: string; elementData: string; zIndex: number }) => {
+      console.log('[SignalR] Remote element created:', data);
+      this.handleRemoteElementCreated(data);
+    });
+
+    // Feature #109: Handle element updates from other participants
+    // Per spec: "Element updates broadcast to participants - Moving/resizing elements syncs to all users"
+    // Note: Backend sends PascalCase (ElementId, Data), TypeScript uses camelCase
+    this.signalRService.on('OnElementUpdated', (data: { ElementId: string; Data: any }) => {
+      console.log('[SignalR] Remote element updated:', data);
+      // Parse elementData if it's a string, otherwise use directly
+      const elementData: ElementDataJson = typeof data.Data === 'string' ? JSON.parse(data.Data) : data.Data;
+      this.handleRemoteElementUpdated(data.ElementId, elementData);
+    });
+
+    // Feature #110: Handle element deletion from other participants
+    // Per spec: "Deleting elements removes for all users"
+    this.signalRService.on('OnElementsDeleted', (elementIds: string[]) => {
+      console.log('[SignalR] Remote elements deleted:', elementIds);
+      this.handleRemoteElementsDeleted(elementIds);
+    });
+  }
+
+  /**
+   * Handle element creation from a remote participant (Feature #108)
+   * Per spec: "Drawing an element appears for all users" - "Verify User B did not need to refresh"
+   */
+  private handleRemoteElementCreated(data: { id: string; elementData: string; zIndex: number }): void {
+    if (!this.canvas) {
+      console.warn('[SignalR] Cannot render remote element - canvas not ready');
+      return;
+    }
+
+    // Check if element already exists (prevent duplicates)
+    if (this.elementMap.has(data.id)) {
+      console.log('[SignalR] Element already exists, skipping:', data.id);
+      return;
+    }
+
+    try {
+      const elementData: ElementDataJson = JSON.parse(data.elementData);
+      const fabricObj = this.elementDataToFabricObject(elementData);
+
+      if (fabricObj) {
+        // Store element ID on the Fabric object
+        (fabricObj as any)._elementId = data.id;
+        (fabricObj as any)._isRemote = true; // Mark as remote element
+        this.elementMap.set(data.id, fabricObj);
+
+        // Set selection state based on current tool
+        fabricObj.selectable = this.currentTool === 'select';
+        fabricObj.evented = this.currentTool === 'select';
+
+        // Add to canvas
+        this.canvas.add(fabricObj);
+        this.canvas.renderAll();
+
+        // Update element count
+        this.elementLoadCount++;
+
+        console.log('[SignalR] Remote element rendered successfully:', data.id);
+      }
+    } catch (e) {
+      console.error('[SignalR] Failed to render remote element:', e);
+    }
+  }
+
+  /**
+   * Handle element update from a remote participant (Feature #109)
+   * Per spec: "Element updates broadcast to participants - Moving/resizing elements syncs to all users"
+   *
+   * This method:
+   * 1. Finds the existing element in the canvas by ID
+   * 2. Updates its properties based on the received data
+   * 3. Re-renders the canvas to show the change
+   */
+  private handleRemoteElementUpdated(elementId: string, data: ElementDataJson): void {
+    if (!this.canvas) {
+      console.warn('[SignalR] Cannot update remote element - canvas not ready');
+      return;
+    }
+
+    // Find the existing element in our element map
+    const existingObj = this.elementMap.get(elementId);
+    if (!existingObj) {
+      console.warn('[SignalR] Element not found for update:', elementId);
+      return;
+    }
+
+    try {
+      // Update the element properties based on type
+      switch (data.type) {
+        case 'stroke':
+          // For strokes (paths), we need to recreate the path
+          // since Fabric.js paths are not easily mutable
+          if (data.points && data.points.length > 0) {
+            let pathStr = `M ${data.points[0][0]} ${data.points[0][1]}`;
+            for (let i = 1; i < data.points.length; i++) {
+              pathStr += ` L ${data.points[i][0]} ${data.points[i][1]}`;
+            }
+            // Remove old path and create new one
+            this.canvas.remove(existingObj);
+            const newPath = new fabric.Path(pathStr, {
+              stroke: data.color,
+              strokeWidth: data.thickness || 4,
+              fill: '',
+              strokeLineCap: 'round',
+              strokeLineJoin: 'round',
+              selectable: this.currentTool === 'select',
+              hasControls: true,
+              hasBorders: true
+            });
+            (newPath as any)._elementId = elementId;
+            (newPath as any)._isRemote = true;
+            this.elementMap.set(elementId, newPath);
+            this.canvas.add(newPath);
+          }
+          break;
+
+        case 'rectangle':
+          existingObj.set({
+            left: data.x || 0,
+            top: data.y || 0,
+            width: data.width || 100,
+            height: data.height || 100,
+            stroke: data.color,
+            strokeWidth: data.thickness || 4,
+            fill: data.fillColor || 'transparent'
+          });
+          existingObj.setCoords(); // Update bounding box
+          break;
+
+        case 'circle':
+          existingObj.set({
+            left: (data.cx || 0) - (data.radius || 50),
+            top: (data.cy || 0) - (data.radius || 50),
+            radius: data.radius || 50,
+            stroke: data.color,
+            strokeWidth: data.thickness || 4,
+            fill: data.fillColor || 'transparent'
+          });
+          existingObj.setCoords();
+          break;
+
+        case 'text':
+          if (existingObj instanceof fabric.IText) {
+            existingObj.set({
+              left: data.x || 0,
+              top: data.y || 0,
+              text: data.content || '',
+              fontSize: data.fontSize || 20,
+              fill: data.color
+            });
+            existingObj.setCoords();
+          }
+          break;
+      }
+
+      // Re-render the canvas to show the update
+      this.canvas.renderAll();
+      console.log('[SignalR] Remote element updated successfully:', elementId);
+    } catch (e) {
+      console.error('[SignalR] Failed to update remote element:', e);
+    }
+  }
+
+  /**
+   * Handle element deletion from a remote participant (Feature #110)
+   * Per spec: "Deleting elements removes for all users" - "Verify User B did not need to refresh"
+   */
+  private handleRemoteElementsDeleted(elementIds: string[]): void {
+    if (!this.canvas) {
+      console.warn('[SignalR] Cannot delete remote elements - canvas not ready');
+      return;
+    }
+
+    let deletedCount = 0;
+
+    elementIds.forEach(elementId => {
+      // Find the element in our map
+      const existingObj = this.elementMap.get(elementId);
+      if (existingObj) {
+        // Remove from canvas
+        this.canvas!.remove(existingObj);
+        // Remove from element map
+        this.elementMap.delete(elementId);
+        deletedCount++;
+        this.elementLoadCount--;
+      } else {
+        console.warn('[SignalR] Element not found for deletion:', elementId);
+      }
+    });
+
+    if (deletedCount > 0) {
+      // Deselect any active objects that may have been deleted
+      this.canvas.discardActiveObject();
+      // Re-render the canvas
+      this.canvas.renderAll();
+      console.log('[SignalR] Remote elements deleted successfully:', deletedCount, 'of', elementIds.length);
+    }
+  }
+
+  /**
+   * Handle incoming cursor movement from remote participant (Feature #106)
+   */
+  private handleRemoteCursorMove(data: { connectionId: string; x: number; y: number; timestamp: string }): void {
+    // Convert canvas coordinates to screen coordinates
+    const screenCoords = this.canvasToScreenCoordinates(data.x, data.y);
+
+    const existingCursor = this.remoteCursors.get(data.connectionId);
+
+    if (existingCursor) {
+      // Update existing cursor position
+      existingCursor.x = screenCoords.x;
+      existingCursor.y = screenCoords.y;
+      existingCursor.lastUpdate = Date.now();
+    } else {
+      // Create new cursor for this participant
+      const color = this.getColorForConnection(data.connectionId);
+      this.remoteCursors.set(data.connectionId, {
+        connectionId: data.connectionId,
+        x: screenCoords.x,
+        y: screenCoords.y,
+        color: color,
+        name: 'User', // Will be updated when we get participant info
+        lastUpdate: Date.now()
+      });
+    }
+  }
+
+  /**
+   * Convert canvas coordinates to screen coordinates for cursor display
+   */
+  private canvasToScreenCoordinates(canvasX: number, canvasY: number): { x: number; y: number } {
+    if (!this.canvas) {
+      return { x: canvasX, y: canvasY };
+    }
+
+    // Apply viewport transform (pan and zoom)
+    const vpt = this.canvas.viewportTransform!;
+    const screenX = canvasX * vpt[0] + vpt[4];
+    const screenY = canvasY * vpt[3] + vpt[5];
+
+    return { x: screenX, y: screenY };
+  }
+
+  /**
+   * Get a consistent color for a connection ID (Feature #106)
+   */
+  private getColorForConnection(connectionId: string): string {
+    // Hash the connection ID to get a consistent color index
+    let hash = 0;
+    for (let i = 0; i < connectionId.length; i++) {
+      hash = ((hash << 5) - hash) + connectionId.charCodeAt(i);
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    const index = Math.abs(hash) % this.cursorColors.length;
+    return this.cursorColors[index];
+  }
+
+  /**
+   * Start interval to clean up stale cursors (Feature #106)
+   * Per spec: Remote cursors fade to gray when stale
+   */
+  private startCursorCleanupInterval(): void {
+    // Clear any existing interval
+    if (this.cursorCleanupInterval) {
+      clearInterval(this.cursorCleanupInterval);
+    }
+
+    // Check for stale cursors every 2 seconds
+    this.cursorCleanupInterval = setInterval(() => {
+      const now = Date.now();
+      const staleThreshold = 30000; // Remove cursors after 30 seconds of no updates
+
+      this.remoteCursors.forEach((cursor, connectionId) => {
+        if (now - cursor.lastUpdate > staleThreshold) {
+          console.log('[Cursor] Removing stale cursor:', connectionId);
+          this.remoteCursors.delete(connectionId);
+        }
+      });
+    }, 2000);
+  }
+
+  /**
+   * Get remote cursors as array for template iteration (Feature #106)
+   */
+  getRemoteCursorsArray(): RemoteCursor[] {
+    return Array.from(this.remoteCursors.values());
+  }
+
+  /**
+   * Check if a cursor is stale (no updates for 5 seconds) (Feature #106)
+   * Per spec: Remote cursors fade to gray when stale
+   */
+  isCursorStale(cursor: RemoteCursor): boolean {
+    return Date.now() - cursor.lastUpdate > this.cursorStaleTimeout;
+  }
+
+  /**
+   * Broadcast local cursor position to other participants (Feature #106)
+   * Per spec: Cursor position sync (throttled ~30fps)
+   */
+  private broadcastCursorPosition(opt: fabric.TPointerEventInfo<fabric.TPointerEvent>): void {
+    // Throttle cursor updates to ~30fps (every 33ms)
+    const now = Date.now();
+    if (now - this.lastCursorUpdateTime < this.CURSOR_THROTTLE_MS) {
+      return;
+    }
+    this.lastCursorUpdateTime = now;
+
+    // Get canvas coordinates (not screen coordinates)
+    // Other participants will convert to their own screen coordinates based on their viewport
+    const pointer = this.canvas!.getViewportPoint(opt.e);
+
+    // Send cursor position via SignalR
+    this.signalRService.updateCursor(pointer.x, pointer.y).catch(error => {
+      // Don't log every error - cursor updates are frequent and connection issues
+      // will be handled by the connection status indicator
+    });
   }
 
   /**
@@ -1237,6 +1707,14 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
           elementData: elementDataStr,
           zIndex: zIndex
         });
+
+        // Feature #108: Broadcast element creation to other participants via SignalR
+        // Per spec: "Element creation broadcasts to participants"
+        this.signalRService.createElement({
+          id: savedElement.id,
+          elementData: elementDataStr,
+          zIndex: zIndex
+        }).catch(err => console.error('[SignalR] Failed to broadcast element creation:', err));
       },
       error: (err) => {
         console.error('Failed to save element:', err);
@@ -1325,6 +1803,12 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
         this.isSaving = this.pendingSaveCount > 0;
         this.markSaved();
         console.log('[AutoSave] Element updated successfully');
+
+        // Broadcast update to other participants via SignalR (Feature #109)
+        // Per spec: "Element updates broadcast to participants - Moving/resizing elements syncs to all users"
+        const updateData = JSON.parse(elementDataStr);
+        this.signalRService.updateElement(elementId, updateData);
+        console.log('[SignalR] Broadcasting element update:', elementId);
       },
       error: (err) => {
         console.error('Failed to update element:', err);
@@ -1629,6 +2113,10 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     if (!this.canvas) {
       return;
     }
+
+    // Broadcast cursor position for remote participants (Feature #106: Remote cursor displays)
+    // Per spec: Cursor position sync (throttled ~30fps)
+    this.broadcastCursorPosition(opt);
 
     // Skip drawing if two-finger touch panning is active (per spec: elements do not draw during pan)
     if (this.isTouchPanning) {
@@ -2122,6 +2610,11 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
           next: () => {
             this.isSaving = false;
             this.elementLoadCount -= elementIds.length;
+
+            // Feature #110: Broadcast element deletion to other participants via SignalR
+            // Per spec: "Element deletion broadcasts to participants"
+            this.signalRService.deleteElements(elementIds)
+              .catch(err => console.error('[SignalR] Failed to broadcast element deletion:', err));
           },
           error: (err) => {
             console.error('Failed to delete elements:', err);
