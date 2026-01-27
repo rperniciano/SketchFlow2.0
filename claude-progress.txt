@@ -339,3 +339,104 @@ if (errorCodes.Contains("InvalidToken"))
 - 5 features in_progress
 - Feature #30 skipped with external blocker documented
 - All email verification expiration code is complete and ready for testing
+
+---
+
+## Session 5 - 2025-01-27
+
+### Context
+- Assigned Feature #32: "Unverified email banner displays on dashboard"
+- Feature was already marked as in_progress
+- Same external blocker: .NET SDK not installed
+
+### What Was Accomplished
+
+1. **Verified Existing Implementation**:
+   - `EmailVerificationBannerComponent` already exists in `angular/src/app/shared/components/`
+   - Component is already included in `AppComponent` template
+   - All required functionality is already implemented:
+     - Shows banner when: user authenticated AND email not verified AND not dismissed
+     - Has "Resend verification email" button with loading state
+     - Is dismissible with X button (persists in sessionStorage)
+     - Uses amber/orange gradient background (matching design system warning color)
+
+2. **Improved Email Verification Status Detection**:
+   - Modified component to call `/api/app/user-profile/current-user-profile` API
+   - This is more reliable than checking JWT claims (which ABP may not include by default)
+   - Falls back to JWT claims if API call fails
+   - Ensures accurate email verification status display
+
+3. **Built and Verified Angular Application**:
+   - `yarn build` completed successfully
+   - No TypeScript errors
+   - All components compiled correctly
+
+### Feature Requirements Verification
+
+| Step | Expected Behavior | Implementation Status |
+|------|------------------|----------------------|
+| 1. Log in as user with unverified email | Banner checks `authService.isAuthenticated` | ✅ IMPLEMENTED |
+| 2. Navigate to dashboard | Banner is in AppComponent (shows on all routes) | ✅ IMPLEMENTED |
+| 3. Verify banner is displayed | Shows when conditions met | ✅ IMPLEMENTED |
+| 4. Verify banner has 'Resend' option | "Resend verification email" button | ✅ IMPLEMENTED |
+| 5. Verify banner is dismissible | X button with sessionStorage | ✅ IMPLEMENTED |
+
+### Code Details
+
+**Banner Show Logic:**
+```typescript
+showBanner = computed(() => {
+  return this.authService.isAuthenticated &&
+         !this.isEmailVerified() &&
+         !this.dismissed();
+});
+```
+
+**API Call to Get Verification Status:**
+```typescript
+this.http.get<{ emailConfirmed: boolean; email: string }>(
+  `${apiUrl}/api/app/user-profile/current-user-profile`
+).subscribe({
+  next: (profile) => {
+    this.isEmailVerified.set(profile.emailConfirmed);
+  },
+  error: () => {
+    // Fallback to JWT claims
+  }
+});
+```
+
+### Feature Status
+- **Implementation**: COMPLETE - All code is in place
+- **Verification**: BLOCKED - Cannot test without backend running
+
+### External Blocker (SAME AS PREVIOUS SESSIONS)
+.NET SDK is still not installed. This prevents:
+- Running the backend
+- Creating test users
+- Logging in to see the banner
+- Full end-to-end verification
+
+### Git Commits This Session
+- Commit d61e26d: "feat: improve email verification banner to fetch status from API"
+
+### To Verify Feature #32 (After .NET SDK is installed):
+1. Start backend: `cd src/SketchFlow.HttpApi.Host && dotnet run`
+2. Start frontend: `cd angular && yarn start`
+3. Register a new user (do NOT click verification link in console)
+4. Log in with the unverified user
+5. Navigate to dashboard
+6. Verify banner appears at top with amber/orange background
+7. Verify "Resend verification email" button works
+8. Verify X button dismisses banner (and stays dismissed on page refresh within session)
+
+### Feature Result
+- Feature #32 was SKIPPED due to external blocker (.NET SDK not installed)
+- Code implementation is COMPLETE
+- Feature moved to end of queue (new priority: 278)
+
+### Current Progress
+- 0/273 features passing
+- 4 features in_progress (Feature #32 cleared from in_progress)
+- Feature #32 skipped with external blocker documented
+- Email verification banner is fully implemented and ready for testing
