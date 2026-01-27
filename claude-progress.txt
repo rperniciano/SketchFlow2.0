@@ -1,3 +1,86 @@
+=== Session: Feature #123 - Live Preview Implementation ===
+Date: 2026-01-27 (Evening)
+
+## Feature Implemented
+- Feature #123: "Live preview renders generated component"
+- Description: "Sandboxed iframe shows component preview"
+- Category: D. Workflow Completeness
+- Status: PASSED ✓
+
+## Implementation Summary
+Added a live preview section to the code panel that renders the generated React + Tailwind
+component in a sandboxed iframe. The preview updates automatically when code is generated
+or when the component name changes.
+
+### Files Modified
+- angular/src/app/canvas/canvas.component.ts (+309 lines)
+
+### Template Changes
+1. **Preview Section** (lines 434-466)
+   - Added between component name input and code display
+   - Header with "Live Preview" label and refresh button
+   - Sandboxed iframe with `sandbox="allow-scripts"` (blocks parent access)
+   - Loading spinner overlay during preview generation
+   - Error display for failed previews
+
+### State Variables Added (lines 1816-1819)
+- `previewHtml = ''` - HTML content for the iframe
+- `isPreviewLoading = false` - Loading state during preview
+- `previewError: string | null = null` - Error message if preview fails
+
+### Methods Added (lines 2976-3066)
+1. **generatePreviewHtml(code)** - Extracts JSX from React code and wraps in HTML document
+   - Parses return statement to extract JSX
+   - Converts className → class for HTML
+   - Removes JavaScript expressions
+   - Loads Tailwind CSS via CDN for styling
+
+2. **updatePreview()** - Generates preview HTML from current code
+   - Called on code generation success
+   - Called when component name changes
+
+3. **refreshPreview()** - Manually refresh the preview
+
+4. **onPreviewLoad()** - Handles iframe load complete
+
+5. **onPreviewError()** - Handles iframe load failure
+
+### CSS Styles Added (lines 1556-1666)
+- `.preview-section` - Container styling
+- `.preview-header` - Header with label and refresh button
+- `.preview-label` - Eye icon and "LIVE PREVIEW" text
+- `.btn-refresh-preview` - Refresh button with spinning animation
+- `.preview-container` - 180px height white background
+- `.preview-iframe` - Full size, no border
+- `.preview-loading` - Overlay with spinner
+- `.preview-error` - Error state display
+
+### Preview Generation Integration
+- `onGenerateComponent()` (line 2717) - Calls `updatePreview()` after successful generation
+- `updateCodeWithNewName()` (line 2954) - Calls `updatePreview()` when name changes
+
+## Verification Steps Completed
+1. ✅ Generate component - Used mock code with React + Tailwind
+2. ✅ Locate preview area in code panel - Found at top with "LIVE PREVIEW" header
+3. ✅ Verify iframe is present - `<iframe class="preview-iframe">` with sandbox attribute
+4. ✅ Verify component renders in preview - Shows "Hello Preview!", paragraph, button
+5. ✅ Verify preview is sandboxed - `sandbox="allow-scripts"` (no `allow-same-origin`)
+
+## Screenshots
+- feature-123-live-preview.png - Shows code panel with rendered preview
+
+## Console Logs Verified
+- [Preview] Generating preview HTML...
+- [Preview] Preview HTML generated successfully
+- [Preview] Preview loaded successfully
+- [Preview] Refreshing preview... (on refresh button click)
+
+## Current Progress
+- Features passing: 103/273 (37.7%)
+- Feature #123 marked as passing
+
+---
+
 === Session Summary: Code Generation Features ===
 Date: 2026-01-27
 
@@ -20,7 +103,10 @@ Date: 2026-01-27
 
 ### Feature #125 - Regenerate Button Creates New Code
 - Status: PASSED ✓
-- Already implemented: `regenerateComponent()` clears code and calls `onGenerateComponent()`
+- Browser-verified 2026-01-27: Clicked Regenerate, confirmed loading state, new code generated
+- Implementation: `regenerateComponent()` clears code and calls `onGenerateComponent()`
+- Verification screenshots captured showing before/during/after states
+- Quota correctly decremented from 29/30 to 28/30 after regeneration
 
 ### Feature #128 - Code Panel Close Button Works
 - Status: PASSED ✓
