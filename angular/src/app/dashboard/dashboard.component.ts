@@ -68,10 +68,8 @@ export class DashboardComponent implements OnInit {
   }
 
   openCreateModal(): void {
-    console.log('openCreateModal called, setting isCreateModalOpen to true');
     this.isCreateModalOpen = true;
     this.newBoardName = '';
-    console.log('isCreateModalOpen is now:', this.isCreateModalOpen);
   }
 
   closeCreateModal(): void {

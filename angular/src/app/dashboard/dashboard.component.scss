@@ -21,6 +21,7 @@
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  position: relative;
 }
 
 /* Glassmorphism Card */
@@ -469,21 +470,24 @@
   }
 }
 
-/* Modal */
+/* Modal - Use viewport units and absolute positioning to escape containment */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
+  z-index: 99999 !important;
   animation: fadeIn 0.2s ease;
+  /* Escape any containing blocks */
+  contain: none;
+  transform: none;
 }
 
 @keyframes fadeIn {
