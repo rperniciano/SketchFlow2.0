@@ -151,8 +151,13 @@ export class DashboardComponent implements OnInit {
       error: (err) => {
         console.error('Failed to create board:', err);
         this.isCreating = false;
-        // Show error to user
-        alert('Failed to create board. Please try again.');
+        // Check for board limit error
+        const errorCode = err?.error?.error?.code || err?.error?.code;
+        if (errorCode === 'SketchFlow:BoardLimitReached') {
+          alert('You have reached the maximum limit of 50 boards. Please delete some boards to create new ones.');
+        } else {
+          alert('Failed to create board. Please try again.');
+        }
       }
     });
   }
@@ -183,10 +188,41 @@ export class DashboardComponent implements OnInit {
   }
 
   shareBoard(board: Board): void {
-    this.shareBoard_ = board;
-    this.shareLink = this.generateShareLink(board.shareToken);
-    this.shareLinkCopied = false;
-    this.isShareModalOpen = true;
+    // Use browser dialogs as a workaround for modal CSS stacking context issue with ABP Lepton theme
+    const shareLink = this.generateShareLink(board.shareToken);
+
+    // Show share link in prompt (allows easy copying) with option to regenerate
+    const message = `Share link for "${board.name}":\n\n${shareLink}\n\nClick OK to copy to clipboard, or Cancel to close.`;
+
+    // Use a loop to allow regeneration
+    this.showShareDialog(board, shareLink);
+  }
+
+  private showShareDialog(board: Board, shareLink: string): void {
+    // First, copy the link to clipboard
+    navigator.clipboard.writeText(shareLink).then(() => {
+      // Ask if user wants to regenerate
+      const regenerate = window.confirm(
+        `Share link copied to clipboard!\n\n${shareLink}\n\nDo you want to regenerate the share link?\n(This will invalidate the old link)`
+      );
+
+      if (regenerate) {
+        this.regenerateShareTokenWithCallback(board, (newLink) => {
+          this.showShareDialog(board, newLink);
+        });
+      }
+    }).catch(() => {
+      // Clipboard failed, show prompt for manual copy
+      const regenerate = window.confirm(
+        `Share link:\n\n${shareLink}\n\n(Copy the link above manually)\n\nDo you want to regenerate the share link?\n(This will invalidate the old link)`
+      );
+
+      if (regenerate) {
+        this.regenerateShareTokenWithCallback(board, (newLink) => {
+          this.showShareDialog(board, newLink);
+        });
+      }
+    });
   }
 
   closeShareModal(): void {
@@ -212,6 +248,26 @@ export class DashboardComponent implements OnInit {
     }).catch(err => {
       console.error('Failed to copy share link:', err);
       alert('Failed to copy link. Please copy it manually.');
+    });
+  }
+
+  private regenerateShareTokenWithCallback(board: Board, callback: (newLink: string) => void): void {
+    this.boardService.regenerateShareToken(board.id).subscribe({
+      next: (newToken) => {
+        // Update the token in the boards list
+        const boardIndex = this.boards.findIndex(b => b.id === board.id);
+        if (boardIndex > -1) {
+          this.boards[boardIndex].shareToken = newToken;
+        }
+        board.shareToken = newToken;
+        const newLink = this.generateShareLink(newToken);
+        alert(`Share link regenerated!\n\nNew link: ${newLink}\n\nThe old link no longer works.`);
+        callback(newLink);
+      },
+      error: (err) => {
+        console.error('Failed to regenerate share token:', err);
+        alert('Failed to regenerate share link. Please try again.');
+      }
     });
   }
 
