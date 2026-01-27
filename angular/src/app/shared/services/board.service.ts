@@ -32,6 +32,27 @@ export interface GetBoardListDto {
   includeDeleted?: boolean;
 }
 
+export interface BoardElementDto {
+  id: string;
+  boardId: string;
+  creatorUserId?: string;
+  creatorGuestSessionId?: string;
+  elementData: string;
+  zIndex: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateBoardElementDto {
+  elementData: string;
+  zIndex?: number;
+}
+
+export interface UpdateBoardElementDto {
+  elementData: string;
+  zIndex?: number;
+}
+
 export interface PagedResultDto<T> {
   totalCount: number;
   items: T[];
@@ -109,5 +130,26 @@ export class BoardService {
   getByShareToken(shareToken: string): Observable<BoardDto | null> {
     const params = new HttpParams().set('shareToken', shareToken);
     return this.http.get<BoardDto | null>(`${this.apiUrl}/api/app/board/by-share-token`, { params });
+  }
+
+  // ============ BOARD ELEMENTS ============
+  // Note: ABP auto-API conventions put the action name before the parameter
+
+  getElements(boardId: string): Observable<BoardElementDto[]> {
+    return this.http.get<BoardElementDto[]>(`${this.apiUrl}/api/app/board/elements/${boardId}`);
+  }
+
+  createElement(boardId: string, input: CreateBoardElementDto): Observable<BoardElementDto> {
+    return this.http.post<BoardElementDto>(`${this.apiUrl}/api/app/board/element/${boardId}`, input);
+  }
+
+  updateElement(boardId: string, elementId: string, input: UpdateBoardElementDto): Observable<BoardElementDto> {
+    return this.http.put<BoardElementDto>(`${this.apiUrl}/api/app/board/element/${boardId}/${elementId}`, input);
+  }
+
+  deleteElements(boardId: string, elementIds: string[]): Observable<void> {
+    return this.http.request<void>('DELETE', `${this.apiUrl}/api/app/board/elements/${boardId}`, {
+      body: elementIds
+    });
   }
 }
