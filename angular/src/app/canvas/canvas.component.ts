@@ -2,14 +2,14 @@ import { Component, OnInit, OnDestroy, inject, AfterViewInit, ElementRef, ViewCh
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Subscription, forkJoin, of, from, catchError, tap, finalize } from 'rxjs';
+import { Subscription, forkJoin, of, from, catchError, tap, finalize, timeout, TimeoutError } from 'rxjs';
 import { ConfigStateService } from '@abp/ng.core';
 import { BoardService, BoardDto, BoardElementDto, CreateBoardElementDto } from '../shared/services/board.service';
 import { ConnectionService } from '../shared/services/connection.service';
 import { OfflineQueueService, QueuedOperation } from '../shared/services/offline-queue.service';
 import { SignalRService } from '../shared/services/signalr.service';
 import { ToastService } from '../shared/services/toast.service';
-import { GenerationService } from '../shared/services/generation.service';
+import { GenerationService, GenerationError } from '../shared/services/generation.service';
 import { ConnectionLostBannerComponent } from '../shared/components/connection-lost-banner.component';
 import { ToastContainerComponent } from '../shared/components/toast-container.component';
 import * as fabric from 'fabric';
@@ -409,10 +409,38 @@ interface RemoteSelection {
             <p class="loading-hint">This may take up to 10 seconds</p>
           </div>
 
-          <!-- Error State -->
+          <!-- Error State (Feature #136: Vision analysis failure shows helpful error with tips) -->
           <div class="code-panel-error" *ngIf="generationError && !isGenerating">
             <i class="bi bi-exclamation-triangle"></i>
-            <p>{{ generationError }}</p>
+            <p class="error-message">{{ generationError }}</p>
+
+            <!-- Vision Analysis Failure Tips (Feature #136) -->
+            <div class="error-tips" *ngIf="generationErrorType === 'vision_failed'">
+              <p class="tips-header"><i class="bi bi-lightbulb"></i> Tips for better results:</p>
+              <ul class="tips-list">
+                <li>Use clear, simple shapes</li>
+                <li>Add contrast between elements</li>
+                <li>Avoid overlapping shapes</li>
+                <li>Use solid colors instead of gradients</li>
+                <li>Make text labels larger</li>
+              </ul>
+            </div>
+
+            <!-- Timeout Error Tips -->
+            <div class="error-tips" *ngIf="generationErrorType === 'timeout'">
+              <p class="tips-header"><i class="bi bi-lightbulb"></i> Tips:</p>
+              <ul class="tips-list">
+                <li>Try selecting fewer elements</li>
+                <li>Simplify your sketch</li>
+                <li>Break complex designs into smaller parts</li>
+              </ul>
+            </div>
+
+            <!-- Rate Limit Info -->
+            <div class="error-tips" *ngIf="generationErrorType === 'rate_limit'">
+              <p class="tips-header"><i class="bi bi-clock"></i> Please wait before trying again</p>
+            </div>
+
             <button class="btn-retry" (click)="retryGeneration()">
               <i class="bi bi-arrow-clockwise"></i>
               Try Again
@@ -519,14 +547,49 @@ interface RemoteSelection {
             </div>
 
             <!-- Quota Display (per spec: "X / Y generations remaining") -->
-            <div class="quota-display">
-              <span class="quota-text">
-                {{ generationsLimit - generationsUsed }} / {{ generationsLimit }} generations remaining
-              </span>
-              <span class="quota-warning" *ngIf="generationsLimit - generationsUsed <= 5">
-                <i class="bi bi-exclamation-circle"></i>
-                Running low
-              </span>
+            <!-- Feature #134: At limit message and upgrade prompt shown -->
+            <div class="quota-display" [class.quota-exceeded]="isQuotaExceeded()">
+              <!-- Normal quota display when not at limit -->
+              <ng-container *ngIf="!isQuotaExceeded()">
+                <span class="quota-text">
+                  {{ generationsLimit - generationsUsed }} / {{ generationsLimit }} generations remaining
+                </span>
+                <span class="quota-warning" *ngIf="generationsLimit - generationsUsed <= 5 && generationsLimit - generationsUsed > 0">
+                  <i class="bi bi-exclamation-circle"></i>
+                  Running low
+                </span>
+              </ng-container>
+
+              <!-- Feature #134: At limit message with upgrade/wait prompt -->
+              <ng-container *ngIf="isQuotaExceeded()">
+                <div class="quota-limit-reached">
+                  <div class="limit-reached-header">
+                    <i class="bi bi-exclamation-octagon"></i>
+                    <span class="limit-reached-title">Generation Limit Reached</span>
+                  </div>
+
+                  <!-- Message differs for guest vs authenticated users -->
+                  <p class="limit-reached-message" *ngIf="isGuest">
+                    You've used all {{ generationsLimit }} free generations for this session.
+                    <a href="/register" class="upgrade-link">Create an account</a> to get 30 generations per month!
+                  </p>
+                  <p class="limit-reached-message" *ngIf="!isGuest">
+                    You've used all {{ generationsLimit }} generations this month.
+                  </p>
+
+                  <!-- Reset date for authenticated users (per spec: "Verify reset date shown if applicable") -->
+                  <p class="quota-reset-info" *ngIf="!isGuest">
+                    <i class="bi bi-calendar3"></i>
+                    Your quota resets on <strong>{{ getQuotaResetDateFormatted() }}</strong>
+                    <span class="days-until-reset">({{ getDaysUntilReset() }} days)</span>
+                  </p>
+
+                  <!-- Upgrade prompt for authenticated users -->
+                  <p class="upgrade-prompt" *ngIf="!isGuest">
+                    Need more generations? <a href="/settings?tab=upgrade" class="upgrade-link">Upgrade your plan</a>
+                  </p>
+                </div>
+              </ng-container>
             </div>
           </div>
         </div>
@@ -1517,6 +1580,53 @@ interface RemoteSelection {
       background: rgba(99, 102, 241, 0.3);
     }
 
+    /* Feature #136: Error Tips Styling */
+    .error-message {
+      font-weight: 500;
+      color: #ef4444 !important;
+    }
+
+    .error-tips {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 1rem;
+      margin: 0.5rem 0;
+      text-align: left;
+      width: 100%;
+      max-width: 320px;
+    }
+
+    .tips-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #f59e0b !important;
+      font-size: 0.8125rem !important;
+      font-weight: 500;
+      margin-bottom: 0.75rem !important;
+    }
+
+    .tips-header i {
+      font-size: 1rem !important;
+      color: #f59e0b !important;
+    }
+
+    .tips-list {
+      margin: 0;
+      padding-left: 1.25rem;
+      color: #a1a1aa;
+      font-size: 0.8125rem;
+      line-height: 1.6;
+    }
+
+    .tips-list li {
+      margin-bottom: 0.25rem;
+    }
+
+    .tips-list li:last-child {
+      margin-bottom: 0;
+    }
+
     /* Code Panel Content */
     .code-panel-content {
       flex: 1;
@@ -1997,6 +2107,83 @@ interface RemoteSelection {
       font-size: 0.75rem;
       color: #f59e0b;
     }
+
+    /* Feature #134: Quota Exceeded / Limit Reached Styles */
+    .quota-display.quota-exceeded {
+      flex-direction: column;
+      align-items: stretch;
+      padding: 1rem 1.25rem;
+      background: rgba(239, 68, 68, 0.1); /* Red tinted background */
+      border-top: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .quota-limit-reached {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .limit-reached-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #ef4444; /* Error red */
+    }
+
+    .limit-reached-header i {
+      font-size: 1.125rem;
+    }
+
+    .limit-reached-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    .limit-reached-message {
+      margin: 0;
+      font-size: 0.8125rem;
+      color: #a1a1aa;
+      line-height: 1.5;
+    }
+
+    .quota-reset-info {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      margin: 0;
+      font-size: 0.75rem;
+      color: #71717a;
+    }
+
+    .quota-reset-info i {
+      color: #6366f1; /* Primary accent color */
+    }
+
+    .quota-reset-info strong {
+      color: #ffffff;
+    }
+
+    .days-until-reset {
+      color: #71717a;
+    }
+
+    .upgrade-prompt {
+      margin: 0;
+      font-size: 0.8125rem;
+      color: #a1a1aa;
+    }
+
+    .upgrade-link {
+      color: #6366f1; /* Primary accent */
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.2s ease;
+    }
+
+    .upgrade-link:hover {
+      color: #8b5cf6; /* Secondary accent on hover */
+      text-decoration: underline;
+    }
   `]
 })
 export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
@@ -2048,9 +2235,11 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   componentName = 'GeneratedComponent';
   originalComponentName = 'GeneratedComponent'; // Feature #122: Track original name for code updates
   generationError: string | null = null;
+  generationErrorType: GenerationError['errorType'] | null = null; // Feature #136: Track error type for specific messages
   // Quota tracking (per spec: "X / Y generations remaining")
   generationsUsed = 0;
   generationsLimit = 30; // Default for authenticated users (per spec)
+  quotaResetDate: Date | null = null; // Feature #134: Reset date for authenticated users (1st of next month)
 
   // Generation Options (Feature #126, #127: Responsive and Include placeholders toggles)
   // Per spec: Generation options: Responsive (toggle), Include placeholders (toggle)
@@ -2816,6 +3005,7 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     // Step 1: Set loading state
     this.isGenerating = true;
     this.generationError = null;
+    this.generationErrorType = null; // Feature #136: Clear error type on new generation
 
     // Step 2: Show loading toast
     this.toastService.info('Exporting selection and preparing for AI analysis...', 3000);
@@ -2836,7 +3026,10 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       // Step 5: Call generation service (using mock for now since AI APIs may not be configured)
       // In production this would use: this.generationService.generateComponent(...)
       // Feature #126, #127: Pass toggle options to generation service
+      // Feature #138: Apply 30-second timeout per spec: "Timeout (>30s): Taking too long. Sketch might be too complex."
+      const GENERATION_TIMEOUT_MS = 30000; // 30 seconds per spec
       console.log('[Generate] Options:', { responsive: this.responsiveOption, includePlaceholders: this.includePlaceholdersOption });
+      console.log('[Generate] Timeout set to:', GENERATION_TIMEOUT_MS / 1000, 'seconds');
       this.generationService.generateComponentMock({
         boardId: this.board.id,
         imageBase64,
@@ -2845,7 +3038,22 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
           responsive: this.responsiveOption,
           includePlaceholders: this.includePlaceholdersOption
         }
-      }).subscribe({
+      }).pipe(
+        // Feature #138: Apply 30-second timeout
+        timeout(GENERATION_TIMEOUT_MS),
+        // Convert TimeoutError to GenerationError
+        catchError((error) => {
+          if (error instanceof TimeoutError) {
+            console.error('[Generate] Generation timed out after 30 seconds');
+            const timeoutError: GenerationError = {
+              errorType: 'timeout',
+              message: 'Taking too long. Sketch might be too complex.'
+            };
+            throw timeoutError;
+          }
+          throw error;
+        })
+      ).subscribe({
         next: (result) => {
           console.log('[Generate] Generation completed successfully:', result.componentName);
           this.isGenerating = false;
@@ -2854,12 +3062,28 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
           this.componentName = result.componentName;
           this.originalComponentName = result.componentName; // Feature #122: Track original for code updates
           this.isCodePanelOpen = true;
-          this.generationsUsed++;
 
-          // Feature #131: Save guest generation count to localStorage
+          // Feature #131, #135: Track generation usage
           if (this.isGuest) {
+            // Guests: increment locally and save to localStorage
+            this.generationsUsed++;
             this.saveGuestGenerationCount();
             console.log('[Quota] Guest generations:', this.generationsUsed, '/', this.generationsLimit);
+          } else {
+            // Authenticated users: record usage on backend (Feature #135)
+            // Backend handles quota reset on first of month
+            this.generationService.recordUsage().subscribe({
+              next: (quota) => {
+                this.generationsUsed = quota.used;
+                this.generationsLimit = quota.limit;
+                console.log('[Quota] Usage recorded on backend:', quota.used, '/', quota.limit);
+              },
+              error: (err) => {
+                // Fallback to local increment if backend fails
+                console.warn('[Quota] Failed to record on backend, incrementing locally:', err);
+                this.generationsUsed++;
+              }
+            });
           }
 
           // Feature #123: Update live preview with generated code
@@ -2871,10 +3095,24 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
             5000
           );
         },
-        error: (error) => {
+        error: (error: GenerationError) => {
           console.error('[Generate] Generation failed:', error);
           this.isGenerating = false;
-          this.generationError = error.message || 'Generation failed. Please try again.';
+          this.generationErrorType = error.errorType || null; // Feature #136: Track error type
+
+          // Feature #136: Show specific message for vision analysis failures
+          if (error.errorType === 'vision_failed') {
+            this.generationError = "Couldn't understand this sketch";
+            console.log('[Generate] Vision analysis failed - showing helpful tips');
+          } else if (error.errorType === 'timeout') {
+            this.generationError = "Taking too long. Sketch might be too complex.";
+          } else if (error.errorType === 'rate_limit') {
+            this.generationError = error.retryAfter
+              ? `Rate limit exceeded. Please wait ${error.retryAfter} seconds.`
+              : "Rate limit exceeded. Please wait before generating again.";
+          } else {
+            this.generationError = error.message || 'Generation failed. Please try again.';
+          }
 
           // Show error toast per spec: "Toast: Generation failed (stays until dismissed)"
           this.toastService.error(this.generationError, 0); // 0 = doesn't auto-dismiss
@@ -3131,6 +3369,7 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   retryGeneration(): void {
     console.log('[CodePanel] Retrying generation...');
     this.generationError = null;
+    this.generationErrorType = null; // Feature #136: Clear error type
     this.onGenerateComponent();
   }
 
@@ -3143,7 +3382,57 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     // Close current panel and regenerate
     this.generatedCode = '';
     this.generationError = null;
+    this.generationErrorType = null; // Feature #136: Clear error type
     this.onGenerateComponent();
+  }
+
+  /**
+   * Simulate vision analysis failure for testing (Feature #137)
+   * This method allows testing the error UI and retry functionality
+   * Triggered by Ctrl+Shift+F when elements are selected
+   */
+  simulateVisionFailure(): void {
+    console.log('[Test] Simulating vision analysis failure for Feature #136 testing');
+
+    // Show the code panel
+    this.isCodePanelOpen = true;
+
+    // Set the error state to simulate a vision failure
+    // Per spec: Vision analysis failed: "Couldn't understand this sketch" + tips
+    this.isGenerating = false;
+    this.generatedCode = '';
+    this.generationError = "Couldn't understand this sketch";
+    this.generationErrorType = 'vision_failed';
+
+    // Show error toast (per spec: "Toast: Generation failed (stays until dismissed)")
+    this.toastService.error(this.generationError, 0);
+
+    console.log('[Test] Vision failure simulation complete - error UI should be visible with tips');
+  }
+
+  /**
+   * Simulate timeout failure for testing (Feature #138)
+   * This method allows testing the error UI when generation takes >30 seconds
+   * Triggered by Ctrl+Shift+T when elements are selected
+   * Per spec: Timeout (>30s): "Taking too long. Sketch might be too complex."
+   */
+  simulateTimeoutFailure(): void {
+    console.log('[Test] Simulating timeout failure for Feature #138 testing');
+
+    // Show the code panel
+    this.isCodePanelOpen = true;
+
+    // Set the error state to simulate a timeout
+    // Per spec: "Taking too long. Sketch might be too complex."
+    this.isGenerating = false;
+    this.generatedCode = '';
+    this.generationError = "Taking too long. Sketch might be too complex.";
+    this.generationErrorType = 'timeout';
+
+    // Show error toast (per spec: "Toast: Generation failed (stays until dismissed)")
+    this.toastService.error(this.generationError, 0);
+
+    console.log('[Test] Timeout failure simulation complete - error UI should be visible with tips');
   }
 
   /**
@@ -4587,6 +4876,28 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
+    // Feature #136: Simulate vision failure for testing (Ctrl+Shift+F)
+    // This triggers a simulated vision analysis failure to test error UI
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
+      event.preventDefault();
+      if (this.selectedElementCount > 0) {
+        console.log('[Test] Triggering vision failure simulation (Ctrl+Shift+F)');
+        this.simulateVisionFailure();
+      }
+      return;
+    }
+
+    // Feature #138: Simulate timeout failure for testing (Ctrl+Shift+T)
+    // This triggers a simulated timeout error to test error UI
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 't') {
+      event.preventDefault();
+      if (this.selectedElementCount > 0) {
+        console.log('[Test] Triggering timeout failure simulation (Ctrl+Shift+T)');
+        this.simulateTimeoutFailure();
+      }
+      return;
+    }
+
     // Skip tool shortcuts if editing text
     if (isEditingText) {
       return;
@@ -5445,6 +5756,43 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     return 'Generate Component';
   }
 
+  /**
+   * Get the formatted quota reset date (Feature #134)
+   * Per spec: "Verify reset date shown if applicable"
+   * For authenticated users, quota resets on the 1st of next month
+   */
+  getQuotaResetDateFormatted(): string {
+    if (this.isGuest) {
+      return ''; // Guests don't have reset dates - their quota is per session
+    }
+
+    // Calculate next reset date (1st of next month)
+    if (!this.quotaResetDate) {
+      const now = new Date();
+      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      this.quotaResetDate = nextMonth;
+    }
+
+    // Format as "Month Day" (e.g., "February 1")
+    const options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric' };
+    return this.quotaResetDate.toLocaleDateString('en-US', options);
+  }
+
+  /**
+   * Calculate days until quota resets (Feature #134)
+   */
+  getDaysUntilReset(): number {
+    if (this.isGuest) {
+      return 0;
+    }
+
+    const now = new Date();
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const diffTime = nextMonth.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  }
+
   loadBoardByShareToken(shareToken: string): void {
     this.boardService.getByShareToken(shareToken).subscribe({
       next: (board) => {
@@ -5471,6 +5819,11 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       next: (board) => {
         this.board = board;
         this.isLoading = false;
+
+        // Feature #135: Fetch quota from backend for authenticated users
+        // Quota resets on first of month - backend handles automatic reset
+        this.loadAuthenticatedUserQuota();
+
         // Initialize canvas after view is ready
         setTimeout(() => this.initializeCanvas(), 0);
       },
@@ -5494,6 +5847,44 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
         }
         this.error = 'Could not load this board. It may have been deleted or you may not have access.';
         this.isLoading = false;
+      }
+    });
+  }
+
+  /**
+   * Feature #135: Load quota from backend for authenticated users
+   * Per spec: "Quota resets on first of month" - backend handles automatic reset
+   * This ensures quota is checked on each canvas load and reset if needed
+   */
+  private loadAuthenticatedUserQuota(): void {
+    if (this.isGuest) {
+      // Guests use local storage-based quota (Feature #131)
+      return;
+    }
+
+    console.log('[Quota] Loading quota from backend for authenticated user...');
+    this.generationService.getQuota().subscribe({
+      next: (quota) => {
+        this.generationsUsed = quota.used;
+        this.generationsLimit = quota.limit;
+        console.log('[Quota] Loaded from backend:', {
+          used: quota.used,
+          limit: quota.limit,
+          remaining: quota.remaining,
+          resetDate: quota.resetDate,
+          wasReset: quota.used === 0 && quota.remaining === quota.limit
+        });
+
+        // Feature #133: Log warning if running low
+        if (quota.showWarning) {
+          console.log('[Quota] Warning: Running low on generations');
+        }
+      },
+      error: (err) => {
+        console.warn('[Quota] Failed to load from backend, using defaults:', err);
+        // Use defaults if backend call fails
+        this.generationsUsed = 0;
+        this.generationsLimit = 30;
       }
     });
   }

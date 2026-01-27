@@ -50,12 +50,16 @@ export interface GenerationError {
 /**
  * DTO for user quota information
  * Per spec: Guest: 5 generations per browser session, Free authenticated: 30 per month
+ * Feature #135: Quota resets on first of month - includes resetDate for automatic reset
  */
 export interface GenerationQuota {
   used: number;
   limit: number;
   resetDate?: string;
   isGuest: boolean;
+  remaining?: number;
+  isLimitReached?: boolean;
+  showWarning?: boolean;
 }
 
 /**
@@ -285,25 +289,205 @@ export class GenerationService {
   }
 
   /**
-   * Get user's generation quota
-   * Per spec: Quota display: "X / Y generations remaining"
+   * Simulate a vision analysis failure for testing (Feature #136)
+   * Per spec: Vision analysis failed: "Couldn't understand this sketch" + tips
+   *
+   * This method is used for testing the error handling UI.
+   * In production, vision failures would come from the GPT-4 Vision API.
    */
-  getQuota(): Observable<GenerationQuota> {
-    return this.http.get<GenerationQuota>(`${this.apiUrl}/api/app/generation/quota`).pipe(
-      tap(quota => {
-        this._quota.set(quota);
-        console.log('[Generation] Quota retrieved:', quota);
+  simulateVisionFailure(request: GenerateComponentRequest): Observable<GenerationResult> {
+    console.log('[Generation] Simulating vision analysis failure');
+
+    // Update status and clear previous results
+    this._status.set('exporting');
+    this._lastError.set(null);
+    this._lastResult.set(null);
+
+    // Generate a unique request ID
+    const requestId = crypto.randomUUID();
+    this._currentRequestId.set(requestId);
+
+    // Simulate the pipeline up to the point of failure
+    return of(null).pipe(
+      // Step 1: Export (quick)
+      tap(() => {
+        console.log('[Generation] Step 1: Exporting selection to PNG...');
+        this._status.set('exporting');
+      }),
+      delay(500),
+
+      // Step 2: Vision analysis - FAILS here
+      tap(() => {
+        console.log('[Generation] Step 2: Analyzing sketch with AI vision...');
+        this._status.set('analyzing');
+      }),
+      delay(2000),
+
+      // Throw vision failure error
+      map(() => {
+        const genError: GenerationError = {
+          requestId,
+          errorType: 'vision_failed',
+          message: "Couldn't understand this sketch"
+        };
+        this._status.set('error');
+        this._lastError.set(genError);
+        this.generationFailed$.next(genError);
+        throw genError;
       }),
       catchError(error => {
-        console.warn('[Generation] Failed to get quota, using mock:', error);
-        // Return mock quota for testing
+        return throwError(() => error);
+      })
+    );
+  }
+
+  /**
+   * Simulate a slow generation for timeout testing (Feature #138)
+   * Per spec: Timeout (>30s): "Taking too long. Sketch might be too complex."
+   *
+   * This method takes longer than 30 seconds to complete, triggering the
+   * timeout mechanism in the canvas component.
+   *
+   * @param delayMs - How long to delay (default 35000ms to exceed 30s timeout)
+   */
+  generateSlowForTimeoutTest(request: GenerateComponentRequest, delayMs: number = 35000): Observable<GenerationResult> {
+    console.log('[Generation] Starting SLOW generation for timeout test, will take', delayMs / 1000, 'seconds');
+
+    // Update status and clear previous results
+    this._status.set('exporting');
+    this._lastError.set(null);
+    this._lastResult.set(null);
+
+    // Generate a unique request ID
+    const requestId = crypto.randomUUID();
+    this._currentRequestId.set(requestId);
+
+    const componentName = request.componentName || 'GeneratedComponent';
+
+    // Simulate a very slow generation that takes longer than the 30s timeout
+    return of(null).pipe(
+      tap(() => {
+        console.log('[Generation] Step 1: Exporting (will take very long)...');
+        this._status.set('exporting');
+      }),
+      delay(1000),
+      tap(() => {
+        console.log('[Generation] Step 2: Analyzing (will take very long)...');
+        this._status.set('analyzing');
+      }),
+      delay(2000),
+      tap(() => {
+        console.log('[Generation] Step 3: Generating (simulating slow response for', (delayMs - 3000) / 1000, 'more seconds)...');
+        this._status.set('generating');
+      }),
+      // This delay will exceed the 30-second timeout in the canvas component
+      delay(delayMs - 3000),
+      // Return mock result (this will never be reached if timeout fires)
+      map(() => this.createMockResult(requestId, componentName, true, false)),
+      tap(result => {
+        console.log('[Generation] SLOW generation completed (this should not appear if timeout works)');
+        this._status.set('success');
+        this._lastResult.set(result);
+        this.generationCompleted$.next(result);
+      })
+    );
+  }
+
+  /**
+   * Simulate a timeout failure for testing (Feature #138)
+   * Per spec: Timeout (>30s): "Taking too long. Sketch might be too complex."
+   *
+   * This directly returns a timeout error without waiting.
+   */
+  simulateTimeoutFailure(request: GenerateComponentRequest): Observable<GenerationResult> {
+    console.log('[Generation] Simulating timeout failure (immediate)');
+
+    // Update status and clear previous results
+    this._status.set('exporting');
+    this._lastError.set(null);
+    this._lastResult.set(null);
+
+    // Generate a unique request ID
+    const requestId = crypto.randomUUID();
+    this._currentRequestId.set(requestId);
+
+    // Simulate the pipeline up to timeout
+    return of(null).pipe(
+      tap(() => this._status.set('analyzing')),
+      delay(1000),
+      tap(() => this._status.set('generating')),
+      delay(2000),
+      map(() => {
+        const genError: GenerationError = {
+          requestId,
+          errorType: 'timeout',
+          message: "Taking too long. Sketch might be too complex."
+        };
+        this._status.set('error');
+        this._lastError.set(genError);
+        this.generationFailed$.next(genError);
+        throw genError;
+      }),
+      catchError(error => throwError(() => error))
+    );
+  }
+
+  /**
+   * Get user's generation quota
+   * Per spec: Quota display: "X / Y generations remaining"
+   * Feature #135: Quota resets on first of month - backend automatically resets quota
+   */
+  getQuota(): Observable<GenerationQuota> {
+    return this.http.get<GenerationQuota>(`${this.apiUrl}/api/app/quota`).pipe(
+      tap(quota => {
+        this._quota.set(quota);
+        console.log('[Generation] Quota retrieved from backend:', quota);
+        // Feature #135: Log if quota was reset
+        if (quota.resetDate) {
+          console.log('[Quota] Reset date:', quota.resetDate);
+        }
+      }),
+      catchError(error => {
+        console.warn('[Generation] Failed to get quota from backend, using mock:', error);
+        // Return mock quota for testing when backend is unavailable
         const mockQuota: GenerationQuota = {
           used: 0,
           limit: 30,
-          isGuest: false
+          isGuest: false,
+          remaining: 30,
+          isLimitReached: false,
+          showWarning: false
         };
         this._quota.set(mockQuota);
         return of(mockQuota);
+      })
+    );
+  }
+
+  /**
+   * Record a generation usage on the backend
+   * Feature #135: Backend tracks usage and handles automatic reset
+   */
+  recordUsage(): Observable<GenerationQuota> {
+    return this.http.post<GenerationQuota>(`${this.apiUrl}/api/app/quota/record-usage`, {}).pipe(
+      tap(quota => {
+        this._quota.set(quota);
+        console.log('[Generation] Usage recorded on backend:', quota);
+      }),
+      catchError(error => {
+        console.warn('[Generation] Failed to record usage on backend:', error);
+        // Update local quota as fallback
+        const currentQuota = this._quota();
+        if (currentQuota) {
+          const updatedQuota = {
+            ...currentQuota,
+            used: currentQuota.used + 1,
+            remaining: Math.max(0, currentQuota.limit - currentQuota.used - 1)
+          };
+          this._quota.set(updatedQuota);
+          return of(updatedQuota);
+        }
+        return throwError(() => error);
       })
     );
   }
