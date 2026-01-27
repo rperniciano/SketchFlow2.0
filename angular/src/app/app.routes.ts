@@ -8,6 +8,10 @@ export const APP_ROUTES: Routes = [
     loadComponent: () => import('./home/home.component').then(c => c.HomeComponent),
   },
   {
+    path: 'account/confirm-email',
+    loadComponent: () => import('./account/confirm-email.component').then(c => c.ConfirmEmailComponent),
+  },
+  {
     path: 'account',
     loadChildren: () => import('@abp/ng.account').then(c => c.createRoutes()),
   },
