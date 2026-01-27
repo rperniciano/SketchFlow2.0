@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, inject, AfterViewInit, ElementRef, ViewChild, HostListener, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subscription, forkJoin, of, from, catchError, tap, finalize, timeout, TimeoutError } from 'rxjs';
 import { ConfigStateService } from '@abp/ng.core';
 import { BoardService, BoardDto, BoardElementDto, CreateBoardElementDto } from '../shared/services/board.service';
@@ -95,7 +95,7 @@ interface RemoteSelection {
 @Component({
   selector: 'app-canvas',
   standalone: true,
-  imports: [CommonModule, FormsModule, ConnectionLostBannerComponent, ToastContainerComponent],
+  imports: [CommonModule, FormsModule, RouterLink, ConnectionLostBannerComponent, ToastContainerComponent],
   template: `
     <div class="canvas-container">
       <div class="canvas-header">
@@ -668,6 +668,21 @@ interface RemoteSelection {
         <button class="btn-primary" (click)="goBack()">{{ isGuest ? 'Go Home' : 'Return to Dashboard' }}</button>
       </div>
 
+      <!-- Feature #147: Guest Registration Prompt (subtle, non-obtrusive) -->
+      <div class="guest-register-prompt" *ngIf="isGuest && !isGuestPromptDismissed">
+        <div class="prompt-content">
+          <i class="bi bi-stars"></i>
+          <span class="prompt-text">
+            <strong>Enjoying SketchFlow?</strong>
+            <a [routerLink]="['/account/register']">Create a free account</a>
+            for unlimited boards, 30 monthly AI generations, and save your work.
+          </span>
+        </div>
+        <button class="prompt-dismiss" (click)="dismissGuestPrompt()" title="Dismiss">
+          <i class="bi bi-x"></i>
+        </button>
+      </div>
+
       <!-- Toast Container (per spec: notifications at bottom-left) -->
       <app-toast-container></app-toast-container>
     </div>
@@ -1006,6 +1021,87 @@ interface RemoteSelection {
       color: #c4b5fd;
       font-size: 0.875rem;
       margin-left: 1rem;
+    }
+
+    /* Feature #147: Guest Registration Prompt Styles */
+    .guest-register-prompt {
+      position: fixed;
+      bottom: 60px; /* Above status bar */
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: rgba(26, 26, 37, 0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      z-index: 90;
+      animation: slideUp 0.3s ease-out;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+    }
+
+    .guest-register-prompt .prompt-content {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+    }
+
+    .guest-register-prompt .prompt-content i {
+      font-size: 1.125rem;
+      color: #f59e0b;
+    }
+
+    .guest-register-prompt .prompt-text {
+      font-size: 0.8125rem;
+      color: #a1a1aa;
+      line-height: 1.4;
+    }
+
+    .guest-register-prompt .prompt-text strong {
+      color: #ffffff;
+    }
+
+    .guest-register-prompt .prompt-text a {
+      color: #a5b4fc;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .guest-register-prompt .prompt-text a:hover {
+      text-decoration: underline;
+    }
+
+    .guest-register-prompt .prompt-dismiss {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      background: transparent;
+      border: none;
+      border-radius: 6px;
+      color: #71717a;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+    }
+
+    .guest-register-prompt .prompt-dismiss:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
     }
 
     .board-status {
@@ -2300,6 +2396,16 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   error: string | null = null;
   isGuest = false;
   guestSession: GuestSession | null = null;
+
+  // Feature #147: Guest registration prompt state (subtle, dismissible)
+  isGuestPromptDismissed = false;
+  private readonly GUEST_PROMPT_DISMISSED_KEY = 'sketchflow_guest_prompt_dismissed';
+
+  // Feature #145: Guest cookie with 30-day rolling expiry
+  // Per spec: "Cookie-based identity (sketchflow_guest_id), 30-day rolling expiry"
+  private readonly GUEST_ID_COOKIE = 'sketchflow_guest_id';
+  private readonly COOKIE_REFRESH_INTERVAL_MS = 60000; // Refresh cookie at most once per minute
+  private lastCookieRefreshTime = 0;
 
   // Canvas state
   canvas: fabric.Canvas | null = null;
@@ -4567,6 +4673,9 @@ export default BrokenComponent;`;
   private saveNewElement(obj: fabric.FabricObject, type: 'stroke' | 'rectangle' | 'circle' | 'text'): void {
     if (!this.board) return;
 
+    // Feature #145: Refresh guest cookie on activity (rolling 30-day expiry)
+    this.refreshGuestCookieOnActivity();
+
     const elementData = this.fabricObjectToElementData(obj, type);
     const elementDataStr = JSON.stringify(elementData);
     const zIndex = this.nextZIndex++;
@@ -4688,6 +4797,9 @@ export default BrokenComponent;`;
   // Updates are applied locally first, then synced to server. If offline, they're queued.
   private saveElementUpdate(obj: fabric.FabricObject): void {
     if (!this.board) return;
+
+    // Feature #145: Refresh guest cookie on activity (rolling 30-day expiry)
+    this.refreshGuestCookieOnActivity();
 
     const elementId = (obj as any)._elementId;
     const tempId = (obj as any)._tempId;
@@ -5574,6 +5686,9 @@ export default BrokenComponent;`;
   private deleteSelectedObjects(): void {
     if (!this.canvas || !this.board) return;
 
+    // Feature #145: Refresh guest cookie on activity (rolling 30-day expiry)
+    this.refreshGuestCookieOnActivity();
+
     const activeObjects = this.canvas.getActiveObjects();
     if (activeObjects.length > 0) {
       // Collect element IDs to delete from database and record history
@@ -6140,6 +6255,12 @@ export default BrokenComponent;`;
       // Feature #131: Initialize guest quota (5 generations per session per spec)
       this.initializeGuestQuota();
 
+      // Feature #145: Set/refresh guest cookie with 30-day rolling expiry on board load
+      this.setCookie(this.GUEST_ID_COOKIE, this.guestSession.guestId, 30);
+      localStorage.setItem('sketchflow_guest_id', this.guestSession.guestId);
+      this.lastCookieRefreshTime = Date.now();
+      console.log('[Guest] Cookie set/refreshed on canvas load');
+
       // Load board using share token (anonymous endpoint)
       this.loadBoardByShareToken(this.guestSession.shareToken);
     } catch (e) {
@@ -6184,6 +6305,39 @@ export default BrokenComponent;`;
     const storageKey = `sketchflow_guest_generations_${this.guestSession.guestId}`;
     localStorage.setItem(storageKey, this.generationsUsed.toString());
     console.log('[Quota] Saved guest generation count:', this.generationsUsed);
+  }
+
+  /**
+   * Dismiss the guest registration prompt (Feature #147)
+   * Per spec: "Prompt to register for more features" - subtle, non-obtrusive
+   * Saves state to localStorage so prompt stays dismissed for 24 hours
+   */
+  dismissGuestPrompt(): void {
+    this.isGuestPromptDismissed = true;
+    // Store dismissal timestamp (dismissed for 24 hours)
+    const dismissedUntil = Date.now() + (24 * 60 * 60 * 1000);
+    localStorage.setItem(this.GUEST_PROMPT_DISMISSED_KEY, dismissedUntil.toString());
+    console.log('[Guest] Registration prompt dismissed until:', new Date(dismissedUntil).toISOString());
+  }
+
+  /**
+   * Load guest prompt dismissed state from localStorage (Feature #147)
+   * Prompt reappears after 24 hours to gently remind guests about registration benefits
+   */
+  private loadGuestPromptState(): void {
+    const dismissedUntil = localStorage.getItem(this.GUEST_PROMPT_DISMISSED_KEY);
+    if (dismissedUntil) {
+      const dismissedUntilTime = parseInt(dismissedUntil, 10);
+      if (Date.now() < dismissedUntilTime) {
+        this.isGuestPromptDismissed = true;
+        console.log('[Guest] Registration prompt dismissed until:', new Date(dismissedUntilTime).toISOString());
+      } else {
+        // Dismissal expired, show prompt again
+        localStorage.removeItem(this.GUEST_PROMPT_DISMISSED_KEY);
+        this.isGuestPromptDismissed = false;
+        console.log('[Guest] Registration prompt dismissal expired, showing prompt');
+      }
+    }
   }
 
   /**
@@ -6553,5 +6707,71 @@ export default BrokenComponent;`;
 
     delete (window as any).sketchflowTestElements;
     console.log('[Performance Test] Test elements cleared');
+  }
+
+  // ========== Feature #145: Guest Cookie Rolling Expiry ==========
+  // Per spec: "Cookie-based identity (sketchflow_guest_id), 30-day rolling expiry"
+  // "Guest identity cookie extends on activity"
+
+  /**
+   * Set a cookie with expiry in days
+   * @param name Cookie name
+   * @param value Cookie value
+   * @param days Number of days until expiry
+   */
+  private setCookie(name: string, value: string, days: number): void {
+    const expires = new Date();
+    expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
+    document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Lax`;
+    console.log(`[Guest] Set cookie ${name} with ${days}-day expiry, expires: ${expires.toUTCString()}`);
+  }
+
+  /**
+   * Get a cookie value by name
+   * @param name Cookie name
+   * @returns Cookie value or null if not found
+   */
+  private getCookie(name: string): string | null {
+    const nameEQ = name + '=';
+    const cookies = document.cookie.split(';');
+    for (let cookie of cookies) {
+      cookie = cookie.trim();
+      if (cookie.startsWith(nameEQ)) {
+        return cookie.substring(nameEQ.length);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Feature #145: Refresh the guest cookie with 30-day rolling expiry on activity
+   * This method is throttled to avoid excessive cookie writes.
+   * Called when the guest interacts with the board (drawing, moving elements, etc.)
+   */
+  refreshGuestCookieOnActivity(): void {
+    // Only refresh for guests
+    if (!this.isGuest || !this.guestSession) {
+      return;
+    }
+
+    const now = Date.now();
+
+    // Throttle: only refresh if at least COOKIE_REFRESH_INTERVAL_MS has passed
+    if (now - this.lastCookieRefreshTime < this.COOKIE_REFRESH_INTERVAL_MS) {
+      return;
+    }
+
+    // Get the current guest ID from the session
+    const guestId = this.guestSession.guestId;
+
+    // Refresh the cookie with a new 30-day expiry
+    this.setCookie(this.GUEST_ID_COOKIE, guestId, 30);
+
+    // Also update localStorage as backup
+    localStorage.setItem('sketchflow_guest_id', guestId);
+
+    // Update the last refresh timestamp
+    this.lastCookieRefreshTime = now;
+    console.log('[Guest] Cookie expiry extended on activity');
   }
 }
