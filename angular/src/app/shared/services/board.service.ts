@@ -99,7 +99,7 @@ export class BoardService {
   }
 
   permanentDelete(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.apiUrl}/api/app/board/${id}/permanent-delete`);
+    return this.http.post<void>(`${this.apiUrl}/api/app/board/${id}/permanent-delete`, {});
   }
 
   regenerateShareToken(id: string): Observable<string> {
