@@ -6,6 +6,12 @@ namespace SketchFlow.Boards;
 public class BoardDto : EntityDto<Guid>
 {
     public Guid OwnerId { get; set; }
+
+    /// <summary>
+    /// Display name of the board owner.
+    /// </summary>
+    public string OwnerName { get; set; } = string.Empty;
+
     public string Name { get; set; } = string.Empty;
     public string ShareToken { get; set; } = string.Empty;
     public string? Settings { get; set; }

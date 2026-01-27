@@ -31,7 +31,16 @@ import { BoardService, BoardDto } from '../shared/services/board.service';
             <i class="bi bi-easel2"></i>
           </div>
           <h1 class="board-name">{{ board.name }}</h1>
-          <p class="board-meta">Collaborative whiteboard</p>
+          <div class="board-info">
+            <div class="board-owner">
+              <i class="bi bi-person-circle"></i>
+              <span>{{ board.ownerName }}</span>
+            </div>
+            <div class="board-participants">
+              <i class="bi bi-people"></i>
+              <span>{{ board.participantCount }} {{ board.participantCount === 1 ? 'participant' : 'participants' }}</span>
+            </div>
+          </div>
         </div>
 
         <div class="join-form">
@@ -185,10 +194,27 @@ import { BoardService, BoardDto } from '../shared/services/board.service';
       margin: 0 0 0.5rem;
     }
 
-    .board-meta {
+    .board-info {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-top: 0.75rem;
+    }
+
+    .board-owner,
+    .board-participants {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
       color: #a1a1aa;
-      margin: 0;
       font-size: 0.875rem;
+    }
+
+    .board-owner i,
+    .board-participants i {
+      font-size: 1rem;
+      color: #71717a;
     }
 
     /* Join Form */

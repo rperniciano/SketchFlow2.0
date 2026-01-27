@@ -7,6 +7,8 @@ using Volo.Abp;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.Data;
 using Volo.Abp.Domain.Repositories;
+using Volo.Abp.Identity;
+using Volo.Abp.Uow;
 
 namespace SketchFlow.Boards;
 
@@ -19,15 +21,18 @@ public class BoardAppService : SketchFlowAppService, IBoardAppService
     private readonly IRepository<Board, Guid> _boardRepository;
     private readonly IRepository<BoardElement, Guid> _elementRepository;
     private readonly IDataFilter _dataFilter;
+    private readonly IdentityUserManager _userManager;
 
     public BoardAppService(
         IRepository<Board, Guid> boardRepository,
         IRepository<BoardElement, Guid> elementRepository,
-        IDataFilter dataFilter)
+        IDataFilter dataFilter,
+        IdentityUserManager userManager)
     {
         _boardRepository = boardRepository;
         _elementRepository = elementRepository;
         _dataFilter = dataFilter;
+        _userManager = userManager;
     }
 
     public async Task<PagedResultDto<BoardDto>> GetListAsync(GetBoardListDto input)
@@ -241,7 +246,20 @@ public class BoardAppService : SketchFlowAppService, IBoardAppService
             return null;
         }
 
-        return MapToDto(board);
+        // Fetch owner name for join preview
+        var ownerName = "Unknown";
+        var owner = await _userManager.FindByIdAsync(board.OwnerId.ToString());
+        if (owner != null)
+        {
+            // Use UserName (email) or Name extra property if available
+            ownerName = owner.Name ?? owner.UserName ?? "Unknown";
+        }
+
+        // TODO: Get real participant count from BoardSessions when implemented
+        // For now, default to 1 (the owner)
+        var participantCount = 1;
+
+        return MapToDto(board, ownerName, participantCount);
     }
 
     /// <summary>
@@ -347,25 +365,37 @@ public class BoardAppService : SketchFlowAppService, IBoardAppService
         return MapElementToDto(element);
     }
 
+    [UnitOfWork]
     public async Task DeleteElementsAsync(Guid boardId, List<Guid> elementIds)
     {
-        var queryable = await _elementRepository.GetQueryableAsync();
-        var elements = queryable
-            .Where(e => e.BoardId == boardId && elementIds.Contains(e.Id))
-            .ToList();
-
-        foreach (var element in elements)
+        // Delete each element individually using direct ID lookup
+        foreach (var elementId in elementIds)
         {
-            await _elementRepository.DeleteAsync(element);
+            try
+            {
+                var element = await _elementRepository.GetAsync(elementId);
+                if (element.BoardId == boardId)
+                {
+                    await _elementRepository.DeleteAsync(element);
+                }
+            }
+            catch
+            {
+                // Element not found, skip
+            }
         }
+
+        // Ensure changes are persisted
+        await CurrentUnitOfWork!.SaveChangesAsync();
     }
 
-    private static BoardDto MapToDto(Board board, int participantCount = 1)
+    private static BoardDto MapToDto(Board board, string ownerName = "", int participantCount = 1)
     {
         return new BoardDto
         {
             Id = board.Id,
             OwnerId = board.OwnerId,
+            OwnerName = ownerName,
             Name = board.Name,
             ShareToken = board.ShareToken,
             Settings = board.Settings,

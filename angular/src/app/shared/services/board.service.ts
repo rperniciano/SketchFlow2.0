@@ -6,6 +6,7 @@ import { Environment, EnvironmentService } from '@abp/ng.core';
 export interface BoardDto {
   id: string;
   ownerId: string;
+  ownerName: string;
   name: string;
   shareToken: string;
   settings?: string;
