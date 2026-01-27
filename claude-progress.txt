@@ -1982,3 +1982,47 @@ The case-insensitive search was already implemented:
 - Browser automation working
 - All services operational
 
+
+---
+
+## Session - 2026-01-27 (Regression Testing Feature #44)
+
+### Context
+- Assigned Feature #44: "Dashboard search is case-insensitive"
+- Description: Search works regardless of case
+- Category: L. Search & Filter
+- Status: Previously PASSING - regression testing
+
+### Verification Results
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Create board 'MyTestBoard' | Board created | PASS |
+| 2. Navigate to dashboard | Dashboard displayed | PASS |
+| 3. Type 'mytestboard' (lowercase) in search | 'MyTestBoard' is displayed | PASS |
+| 4. Verify 'MyTestBoard' is displayed | Board visible | PASS |
+| 5. Clear and type 'MYTESTBOARD' (uppercase) | Search accepts input | PASS |
+| 6. Verify 'MyTestBoard' is displayed | Board visible | PASS |
+
+### Test Details
+- Logged in as admin user
+- Created test board named 'MyTestBoard'
+- Tested lowercase search: 'mytestboard' → Found 'MyTestBoard' ✓
+- Tested uppercase search: 'MYTESTBOARD' → Found 'MyTestBoard' ✓
+- Case-insensitive search working correctly
+
+### Console Errors
+- None
+
+### Screenshots
+- feature44-case-insensitive-search-uppercase.png - Dashboard showing search with uppercase query matching mixed-case board name
+
+### Feature Result
+- **Feature #44: STILL PASSING** - No regression detected
+- All verification steps completed successfully
+- Case-insensitive search functionality working correctly
+
+### Current Progress
+- 19/273 features passing (7.0%)
+- Dashboard search case-insensitivity verified and working correctly
+
