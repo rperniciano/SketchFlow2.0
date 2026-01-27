@@ -3,12 +3,14 @@ import { Environment } from '@abp/ng.core';
 const baseUrl = 'http://localhost:4200';
 
 const oAuthConfig = {
-  issuer: 'https://localhost:44325/',
+  issuer: 'http://localhost:44326/',
   redirectUri: baseUrl,
   clientId: 'SketchFlow_App',
   responseType: 'code',
   scope: 'offline_access SketchFlow',
   requireHttps: false,
+  skipIssuerCheck: true,
+  strictDiscoveryDocumentValidation: false,
 };
 
 export const environment = {
@@ -20,7 +22,7 @@ export const environment = {
   oAuthConfig,
   apis: {
     default: {
-      url: 'https://localhost:44325',
+      url: 'http://localhost:44326',
       rootNamespace: 'SketchFlow',
     },
     AbpAccountPublic: {
