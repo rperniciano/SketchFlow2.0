@@ -612,7 +612,9 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     const wrapper = this.canvasWrapperRef.nativeElement;
     const rect = wrapper.getBoundingClientRect();
 
-    // Create Fabric.js canvas with marquee selection support
+    // Create Fabric.js canvas with marquee selection support and performance optimizations
+    // Performance: renderOnAddRemove: false prevents re-render on each element add (Feature #94)
+    // This is critical for smooth performance with 1000+ elements
     this.canvas = new fabric.Canvas(this.canvasRef.nativeElement, {
       width: rect.width,
       height: rect.height,
@@ -622,7 +624,10 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       selectionBorderColor: '#6366f1',     // Indigo border for selection box
       selectionLineWidth: 2,               // Selection box border width
       selectionFullyContained: false,      // Select objects that intersect (not just fully contained)
-      preserveObjectStacking: true
+      preserveObjectStacking: true,
+      // Performance optimizations for handling 1000+ elements (per spec: 60fps with 1000 elements)
+      renderOnAddRemove: false,            // Don't re-render on each add/remove - we call renderAll() manually
+      skipOffscreen: true                  // Enable viewport culling - only process visible elements
     });
 
     // Set up selection event handlers
@@ -2208,5 +2213,194 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     } else {
       this.router.navigate(['/dashboard']);
     }
+  }
+
+  /**
+   * Performance test method - generates 1000 elements programmatically
+   * and measures frame rate during rendering, panning, and zooming.
+   *
+   * This can be called from browser console via:
+   * ng.getComponent(document.querySelector('app-canvas')).runPerformanceTest()
+   *
+   * Per spec: "Smooth 60fps rendering up to 1000 elements"
+   */
+  runPerformanceTest(): void {
+    if (!this.canvas) {
+      console.error('[Performance Test] Canvas not initialized');
+      return;
+    }
+
+    console.log('[Performance Test] Starting performance test with 1000 elements...');
+    const startTime = performance.now();
+
+    // Store initial element count
+    const initialElementCount = this.canvas.getObjects().length;
+
+    // Generate 1000 random elements across the canvas area
+    const elements: fabric.FabricObject[] = [];
+    const canvasWidth = this.canvas.getWidth();
+    const canvasHeight = this.canvas.getHeight();
+
+    for (let i = 0; i < 1000; i++) {
+      const x = Math.random() * canvasWidth * 2 - canvasWidth / 2;
+      const y = Math.random() * canvasHeight * 2 - canvasHeight / 2;
+      const elementType = Math.floor(Math.random() * 3); // 0=rect, 1=circle, 2=text
+      const color = this.colors[Math.floor(Math.random() * this.colors.length)].value;
+
+      let element: fabric.FabricObject;
+
+      switch (elementType) {
+        case 0: // Rectangle
+          element = new fabric.Rect({
+            left: x,
+            top: y,
+            width: 50 + Math.random() * 100,
+            height: 50 + Math.random() * 100,
+            fill: color,
+            stroke: '#000000',
+            strokeWidth: 2,
+            selectable: true,
+            hasControls: true,
+            hasBorders: true
+          });
+          break;
+        case 1: // Circle
+          element = new fabric.Circle({
+            left: x,
+            top: y,
+            radius: 25 + Math.random() * 50,
+            fill: color,
+            stroke: '#000000',
+            strokeWidth: 2,
+            selectable: true,
+            hasControls: true,
+            hasBorders: true
+          });
+          break;
+        case 2: // Text
+        default:
+          element = new fabric.IText(`Element ${i + 1}`, {
+            left: x,
+            top: y,
+            fontSize: 12 + Math.random() * 16,
+            fill: color,
+            fontFamily: 'Inter, sans-serif',
+            selectable: true,
+            hasControls: true,
+            hasBorders: true
+          });
+          break;
+      }
+
+      elements.push(element);
+    }
+
+    // Add all elements to canvas
+    const addStartTime = performance.now();
+    elements.forEach(el => this.canvas!.add(el));
+    const addEndTime = performance.now();
+
+    // Render the canvas
+    const renderStartTime = performance.now();
+    this.canvas.renderAll();
+    const renderEndTime = performance.now();
+
+    // Update element count display
+    this.elementLoadCount = this.canvas.getObjects().length;
+
+    const totalTime = performance.now() - startTime;
+
+    console.log('[Performance Test] Results:');
+    console.log(`  - Elements added: 1000 (total on canvas: ${this.elementLoadCount})`);
+    console.log(`  - Element creation time: ${(addStartTime - startTime).toFixed(2)}ms`);
+    console.log(`  - Canvas add time: ${(addEndTime - addStartTime).toFixed(2)}ms`);
+    console.log(`  - Render time: ${(renderEndTime - renderStartTime).toFixed(2)}ms`);
+    console.log(`  - Total time: ${totalTime.toFixed(2)}ms`);
+    console.log('[Performance Test] Starting frame rate test (5 seconds of panning)...');
+
+    // Frame rate measurement during panning
+    let frameCount = 0;
+    let lastFrameTime = performance.now();
+    let testDuration = 5000; // 5 seconds
+    let testStartTime = performance.now();
+    let minFps = Infinity;
+    let maxFps = 0;
+    let fpsReadings: number[] = [];
+
+    const measureFrameRate = () => {
+      const currentTime = performance.now();
+      const deltaTime = currentTime - lastFrameTime;
+
+      if (deltaTime > 0) {
+        const instantFps = 1000 / deltaTime;
+        fpsReadings.push(instantFps);
+        minFps = Math.min(minFps, instantFps);
+        maxFps = Math.max(maxFps, instantFps);
+      }
+
+      frameCount++;
+      lastFrameTime = currentTime;
+
+      // Simulate panning by modifying viewport
+      const vpt = this.canvas!.viewportTransform!;
+      vpt[4] += Math.sin(currentTime / 200) * 2; // Oscillate pan position
+      vpt[5] += Math.cos(currentTime / 200) * 2;
+      this.canvas!.setViewportTransform(vpt);
+      this.canvas!.requestRenderAll();
+
+      if (currentTime - testStartTime < testDuration) {
+        requestAnimationFrame(measureFrameRate);
+      } else {
+        // Test complete - report results
+        const avgFps = fpsReadings.reduce((a, b) => a + b, 0) / fpsReadings.length;
+
+        console.log('[Performance Test] Frame Rate Results:');
+        console.log(`  - Frame count: ${frameCount}`);
+        console.log(`  - Average FPS: ${avgFps.toFixed(1)}`);
+        console.log(`  - Min FPS: ${minFps.toFixed(1)}`);
+        console.log(`  - Max FPS: ${maxFps.toFixed(1)}`);
+        console.log(`  - 60fps target: ${avgFps >= 55 ? 'PASS ✓' : 'FAIL ✗'}`);
+
+        // Reset viewport to center
+        this.canvas!.setViewportTransform([1, 0, 0, 1, 0, 0]);
+        this.canvas!.renderAll();
+
+        console.log('[Performance Test] Complete!');
+        console.log(`[Performance Test] To clear test elements, call: clearPerformanceTestElements()`);
+
+        // Store reference for cleanup
+        (window as any).sketchflowTestElements = elements;
+      }
+    };
+
+    requestAnimationFrame(measureFrameRate);
+  }
+
+  /**
+   * Clear elements created by runPerformanceTest()
+   * Call from browser console:
+   * ng.getComponent(document.querySelector('app-canvas')).clearPerformanceTestElements()
+   */
+  clearPerformanceTestElements(): void {
+    if (!this.canvas) {
+      console.error('[Performance Test] Canvas not initialized');
+      return;
+    }
+
+    const testElements = (window as any).sketchflowTestElements;
+    if (!testElements || !Array.isArray(testElements)) {
+      console.log('[Performance Test] No test elements to clear');
+      return;
+    }
+
+    console.log(`[Performance Test] Removing ${testElements.length} test elements...`);
+    testElements.forEach((el: fabric.FabricObject) => {
+      this.canvas!.remove(el);
+    });
+    this.canvas.renderAll();
+    this.elementLoadCount = this.canvas.getObjects().length;
+
+    delete (window as any).sketchflowTestElements;
+    console.log('[Performance Test] Test elements cleared');
   }
 }
