@@ -103,10 +103,11 @@ export class BoardService {
   }
 
   regenerateShareToken(id: string): Observable<string> {
-    return this.http.post<string>(`${this.apiUrl}/api/app/board/${id}/regenerate-share-token`, {});
+    return this.http.post(`${this.apiUrl}/api/app/board/${id}/regenerate-share-token`, {}, { responseType: 'text' });
   }
 
   getByShareToken(shareToken: string): Observable<BoardDto | null> {
-    return this.http.get<BoardDto | null>(`${this.apiUrl}/api/app/board/by-share-token/${shareToken}`);
+    const params = new HttpParams().set('shareToken', shareToken);
+    return this.http.get<BoardDto | null>(`${this.apiUrl}/api/app/board/by-share-token`, { params });
   }
 }

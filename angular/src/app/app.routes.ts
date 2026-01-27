@@ -15,7 +15,12 @@ export const APP_ROUTES: Routes = [
   {
     path: 'canvas/:id',
     loadComponent: () => import('./canvas/canvas.component').then(c => c.CanvasComponent),
-    canActivate: [authGuard],
+    // No authGuard - allows both authenticated users and guests with valid session
+  },
+  {
+    path: 'join/:shareToken',
+    loadComponent: () => import('./join/join-preview.component').then(c => c.JoinPreviewComponent),
+    // No authGuard - must be accessible to guests
   },
   {
     path: 'account/confirm-email',

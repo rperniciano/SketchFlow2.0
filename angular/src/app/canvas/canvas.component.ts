@@ -3,6 +3,13 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { BoardService, BoardDto } from '../shared/services/board.service';
 
+interface GuestSession {
+  guestId: string;
+  guestName: string;
+  boardId: string;
+  shareToken: string;
+}
+
 @Component({
   selector: 'app-canvas',
   standalone: true,
@@ -12,9 +19,13 @@ import { BoardService, BoardDto } from '../shared/services/board.service';
       <div class="canvas-header">
         <button class="back-btn" (click)="goBack()">
           <i class="bi bi-arrow-left"></i>
-          Back to Dashboard
+          {{ isGuest ? 'Leave Board' : 'Back to Dashboard' }}
         </button>
         <h1 class="board-name" *ngIf="board">{{ board.name }}</h1>
+        <div class="guest-badge" *ngIf="isGuest && guestSession">
+          <i class="bi bi-person"></i>
+          {{ guestSession.guestName }}
+        </div>
         <div class="board-status" *ngIf="isLoading">Loading...</div>
       </div>
       <div class="canvas-area" *ngIf="board">
@@ -22,14 +33,15 @@ import { BoardService, BoardDto } from '../shared/services/board.service';
           <i class="bi bi-easel2 placeholder-icon"></i>
           <h2>Canvas Coming Soon</h2>
           <p>Board ID: {{ board.id }}</p>
+          <p *ngIf="isGuest">You joined as: {{ guestSession?.guestName }}</p>
           <p>This is where the Fabric.js canvas will be implemented.</p>
         </div>
       </div>
       <div class="error-state" *ngIf="error">
         <i class="bi bi-exclamation-triangle"></i>
-        <h2>Board Not Found</h2>
+        <h2>{{ isGuest ? 'Cannot Join Board' : 'Board Not Found' }}</h2>
         <p>{{ error }}</p>
-        <button class="btn-primary" (click)="goBack()">Return to Dashboard</button>
+        <button class="btn-primary" (click)="goBack()">{{ isGuest ? 'Go Home' : 'Return to Dashboard' }}</button>
       </div>
     </div>
   `,
@@ -74,6 +86,19 @@ import { BoardService, BoardDto } from '../shared/services/board.service';
       font-size: 1.25rem;
       font-weight: 600;
       margin: 0;
+    }
+
+    .guest-badge {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: rgba(139, 92, 246, 0.2);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 20px;
+      color: #c4b5fd;
+      font-size: 0.875rem;
     }
 
     .board-status {
@@ -162,15 +187,73 @@ export class CanvasComponent implements OnInit {
   board: BoardDto | null = null;
   isLoading = true;
   error: string | null = null;
+  isGuest = false;
+  guestSession: GuestSession | null = null;
 
   ngOnInit(): void {
     const boardId = this.route.snapshot.paramMap.get('id');
-    if (boardId) {
-      this.loadBoard(boardId);
+    const isGuestParam = this.route.snapshot.queryParamMap.get('guest');
+
+    // Check if this is a guest access
+    if (isGuestParam === 'true') {
+      this.isGuest = true;
+      this.loadGuestSession(boardId);
     } else {
-      this.error = 'No board ID provided';
+      // Try to load as authenticated user
+      if (boardId) {
+        this.loadBoard(boardId);
+      } else {
+        this.error = 'No board ID provided';
+        this.isLoading = false;
+      }
+    }
+  }
+
+  loadGuestSession(boardId: string | null): void {
+    // Get guest session from localStorage
+    const sessionData = localStorage.getItem('sketchflow_guest_session');
+
+    if (!sessionData) {
+      this.error = 'Guest session not found. Please join via a share link.';
+      this.isLoading = false;
+      return;
+    }
+
+    try {
+      this.guestSession = JSON.parse(sessionData) as GuestSession;
+
+      // Verify the board ID matches the session
+      if (this.guestSession.boardId !== boardId) {
+        this.error = 'Invalid guest session for this board.';
+        this.isLoading = false;
+        return;
+      }
+
+      // Load board using share token (anonymous endpoint)
+      this.loadBoardByShareToken(this.guestSession.shareToken);
+    } catch (e) {
+      console.error('Failed to parse guest session:', e);
+      this.error = 'Invalid guest session. Please join via a share link.';
       this.isLoading = false;
     }
+  }
+
+  loadBoardByShareToken(shareToken: string): void {
+    this.boardService.getByShareToken(shareToken).subscribe({
+      next: (board) => {
+        if (board) {
+          this.board = board;
+        } else {
+          this.error = 'Board not found or share link has expired.';
+        }
+        this.isLoading = false;
+      },
+      error: (err) => {
+        console.error('Failed to load board:', err);
+        this.error = 'Could not load this board. The share link may be invalid.';
+        this.isLoading = false;
+      }
+    });
   }
 
   loadBoard(id: string): void {
@@ -181,6 +264,22 @@ export class CanvasComponent implements OnInit {
       },
       error: (err) => {
         console.error('Failed to load board:', err);
+        // Check if this might be a guest trying to access without proper session
+        const sessionData = localStorage.getItem('sketchflow_guest_session');
+        if (sessionData) {
+          try {
+            const guestSession = JSON.parse(sessionData) as GuestSession;
+            if (guestSession.boardId === id) {
+              // Redirect to guest mode
+              this.isGuest = true;
+              this.guestSession = guestSession;
+              this.loadBoardByShareToken(guestSession.shareToken);
+              return;
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
         this.error = 'Could not load this board. It may have been deleted or you may not have access.';
         this.isLoading = false;
       }
@@ -188,6 +287,12 @@ export class CanvasComponent implements OnInit {
   }
 
   goBack(): void {
-    this.router.navigate(['/dashboard']);
+    if (this.isGuest) {
+      // Clear guest session and go home
+      localStorage.removeItem('sketchflow_guest_session');
+      this.router.navigate(['/']);
+    } else {
+      this.router.navigate(['/dashboard']);
+    }
   }
 }
