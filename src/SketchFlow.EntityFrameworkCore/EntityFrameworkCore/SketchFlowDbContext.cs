@@ -24,6 +24,7 @@ public class SketchFlowDbContext :
 {
     /* Add DbSet properties for your Aggregate Roots / Entities here. */
     public DbSet<Board> Boards { get; set; }
+    public DbSet<BoardElement> BoardElements { get; set; }
 
 
     #region Entities from the modules
@@ -88,6 +89,24 @@ public class SketchFlowDbContext :
 
             // Unique index on ShareToken (excluding deleted boards)
             b.HasIndex(x => x.ShareToken).IsUnique();
+        });
+
+        builder.Entity<BoardElement>(b =>
+        {
+            b.ToTable(SketchFlowConsts.DbTablePrefix + "BoardElements", SketchFlowConsts.DbSchema);
+            b.ConfigureByConvention();
+
+            b.Property(x => x.ElementData).IsRequired();
+            b.Property(x => x.CreatorGuestSessionId).HasMaxLength(36);
+
+            // Index on BoardId for efficient element lookup
+            b.HasIndex(x => x.BoardId);
+
+            // Foreign key to Board with cascade delete
+            b.HasOne<Board>()
+                .WithMany()
+                .HasForeignKey(x => x.BoardId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

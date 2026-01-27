@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.Application.Services;
@@ -63,4 +64,26 @@ public interface IBoardAppService : IApplicationService
     /// </summary>
     /// <returns>The number of boards permanently deleted.</returns>
     Task<int> TriggerTrashPurgeAsync();
+
+    // ============ BOARD ELEMENTS ============
+
+    /// <summary>
+    /// Gets all elements for a specific board.
+    /// </summary>
+    Task<List<BoardElementDto>> GetElementsAsync(Guid boardId);
+
+    /// <summary>
+    /// Creates a new element on a board.
+    /// </summary>
+    Task<BoardElementDto> CreateElementAsync(Guid boardId, CreateBoardElementDto input);
+
+    /// <summary>
+    /// Updates an existing element.
+    /// </summary>
+    Task<BoardElementDto> UpdateElementAsync(Guid boardId, Guid elementId, UpdateBoardElementDto input);
+
+    /// <summary>
+    /// Deletes elements from a board.
+    /// </summary>
+    Task DeleteElementsAsync(Guid boardId, List<Guid> elementIds);
 }
