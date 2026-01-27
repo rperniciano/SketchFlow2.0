@@ -13,6 +13,11 @@ export const APP_ROUTES: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'canvas/:id',
+    loadComponent: () => import('./canvas/canvas.component').then(c => c.CanvasComponent),
+    canActivate: [authGuard],
+  },
+  {
     path: 'account/confirm-email',
     loadComponent: () => import('./account/confirm-email.component').then(c => c.ConfirmEmailComponent),
   },

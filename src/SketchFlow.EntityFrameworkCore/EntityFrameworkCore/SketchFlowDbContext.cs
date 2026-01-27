@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SketchFlow.Boards;
 using Volo.Abp.AuditLogging.EntityFrameworkCore;
 using Volo.Abp.BackgroundJobs.EntityFrameworkCore;
 using Volo.Abp.BlobStoring.Database.EntityFrameworkCore;
@@ -22,6 +23,7 @@ public class SketchFlowDbContext :
     IIdentityDbContext
 {
     /* Add DbSet properties for your Aggregate Roots / Entities here. */
+    public DbSet<Board> Boards { get; set; }
 
 
     #region Entities from the modules
@@ -72,11 +74,20 @@ public class SketchFlowDbContext :
         
         /* Configure your own tables/entities inside here */
 
-        //builder.Entity<YourEntity>(b =>
-        //{
-        //    b.ToTable(SketchFlowConsts.DbTablePrefix + "YourEntities", SketchFlowConsts.DbSchema);
-        //    b.ConfigureByConvention(); //auto configure for the base class props
-        //    //...
-        //});
+        builder.Entity<Board>(b =>
+        {
+            b.ToTable(SketchFlowConsts.DbTablePrefix + "Boards", SketchFlowConsts.DbSchema);
+            b.ConfigureByConvention();
+
+            b.Property(x => x.Name).IsRequired().HasMaxLength(200);
+            b.Property(x => x.ShareToken).IsRequired().HasMaxLength(20);
+            b.Property(x => x.Settings).HasMaxLength(4000);
+
+            // Index on OwnerId for filtering boards by owner (excluding deleted)
+            b.HasIndex(x => x.OwnerId);
+
+            // Unique index on ShareToken (excluding deleted boards)
+            b.HasIndex(x => x.ShareToken).IsUnique();
+        });
     }
 }
