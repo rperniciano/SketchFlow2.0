@@ -942,3 +942,58 @@ This is an EXTERNAL blocker - cannot be resolved by the coding agent.
 - Frontend running on http://localhost:4200
 - Browser automation working
 - All services operational
+
+---
+
+## Session - 2025-01-27 (Regression Testing Feature #33)
+
+### Context
+- Assigned Feature #33: "Password reset request sends email"
+- Feature was previously passing but needed regression testing
+- This session: Found and FIXED a security vulnerability\!
+
+### Regression Found
+**User Enumeration Vulnerability in Password Reset**
+
+When testing the forgot password flow:
+- Entered a non-existent email (test@example.com)
+- Got error message: "Can not find the given email address: test@example.com"
+- This reveals whether an email is registered, which is a security vulnerability
+
+The feature spec requires: "Verify success message (generic for security)"
+
+### Fix Implemented
+Created `SketchFlowAccountAppService` in `/src/SketchFlow.Application/Account/`:
+- Overrides ABP's `AccountAppService` using `[ExposeServices]` and `[Dependency(ReplaceServices = true)]`
+- Overrides `SendPasswordResetCodeAsync` method
+- Catches exceptions silently when user is not found
+- Always returns success (redirects to PasswordResetLinkSent page)
+- Prevents user enumeration attacks
+
+### Verification Results
+
+| Step | Expected | Result | Notes |
+|------|----------|--------|-------|
+| 1. Navigate to forgot password page | Page loads | PASS | /Account/ForgotPassword |
+| 2. Enter non-existent email | Form accepts input | PASS | Used nonexistent@example.com |
+| 3. Click submit button | No error revealed | PASS | Previously showed "email not found" |
+| 4. Verify generic success message | Generic message shown | PASS | "Account recovery email sent to your e-mail address..." |
+
+### Screenshots
+- `forgot-password-page.png` - Initial forgot password form
+- `forgot-password-error.png` - Original error (BEFORE fix)
+- `password-reset-success-generic.png` - Generic success message (AFTER fix)
+
+### Files Created/Modified
+- Created: `src/SketchFlow.Application/Account/SketchFlowAccountAppService.cs`
+
+### Git Commit
+- Commit 95251ed: "fix: prevent user enumeration in password reset flow"
+
+### Feature Status
+- **Feature #33**: PASSING (fixed security regression)
+
+### Current Progress
+- Feature #33 regression tested and fixed
+- Security vulnerability patched
+
