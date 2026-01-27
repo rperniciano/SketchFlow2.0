@@ -21,6 +21,11 @@
   <ItemGroup>
     <PackageReference Include="Volo.Abp.Identity.HttpApi" Version="10.0.2" />
     <PackageReference Include="Volo.Abp.Account.HttpApi" Version="10.0.2" />
+    <PackageReference Include="Volo.Abp.Emailing" Version="10.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SketchFlow.Domain\SketchFlow.Domain.csproj" />
   </ItemGroup>
 
 </Project>
