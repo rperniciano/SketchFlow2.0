@@ -1,3 +1,65 @@
+=== Session: Feature #143 - Guest Name Required to Join ===
+Date: 2026-01-28
+
+## Feature Implemented
+- Feature #143: "Guest name required to join"
+- Description: "Guest cannot join without entering name"
+- Category: M. Form Validation
+- Status: PASSED
+
+## Implementation Summary
+Enhanced the join preview page validation to show explicit error messages when the guest
+name field is empty or too short. Previously the Join button was just disabled; now users
+get clear feedback about what's wrong.
+
+### Files Modified
+- angular/src/app/join/join-preview.component.ts
+
+### State Variables Added
+- `nameError: string | null = null` - Current validation error message
+- `nameTouched = false` - Whether the field has been interacted with
+
+### Template Changes
+1. Input field - Added error styling class, blur/input event handlers
+2. Error message - Changed from hint to error display with *ngIf="nameError"
+3. Join button - Now always enabled, validates on click instead of being disabled
+
+### CSS Styles Added
+- `.form-error` - Red error message styling (color: #ef4444)
+- `.form-input.input-error` - Red border for invalid input
+- `.form-input.input-error:focus` - Red focus shadow
+
+### Methods Added
+1. validateName() - Returns boolean, sets nameError message
+   - Empty: "Name is required"
+   - 1 char: "Name must be at least 2 characters"
+   - 2+ chars: clears error, returns true
+2. onNameBlur() - Marks field as touched, runs validation
+3. onNameInput() - Validates on input if already touched
+4. onJoinClick() - Validates and calls joinBoard() if valid
+
+## Verification Steps Completed
+1. Access join preview page - Navigated to /join/{shareToken}
+2. Leave name field empty - Field was empty
+3. Click join button - Clicked "Join Board"
+4. Verify error message about required name - "Name is required" displayed
+5. Verify join is blocked - User stayed on join page, not redirected
+
+## Additional Testing
+- Tested 1-character input - "Name must be at least 2 characters"
+- Tested valid name (2+ chars) - Error clears, join succeeds
+- Verified redirect to canvas with guest parameter works
+
+## Screenshots
+- feature-143-name-required-error.png - Shows "Name is required" error
+- feature-143-join-success.png - Shows successful join to canvas
+
+## Current Progress
+- Features passing: 115/273 (42.1%)
+- Feature #143 marked as passing
+
+---
+
 === Session: Feature #139 - Syntax Errors Show Warning ===
 Date: 2026-01-28
 
@@ -2510,4 +2572,11 @@ to the next month first day.
   - feature-137-retry-in-progress.png - Successful generation after retry
 - Console errors: None related to feature (only SignalR selection update warning)
 - Feature verified working correctly after fix
+
+[Testing] 2026-01-28T00:12:00+01:00 - Feature #137 marked as passing
+- Re-verified all 5 verification steps in new browser session
+- Screenshots: feature-137-canvas-loaded.png, feature-137-error-with-retry.png, feature-137-retry-success.png
+- Console confirmed: retryGeneration() called, generation completed successfully
+- Feature #137 now marked as PASSING in database
+- Current progress: 114/273 (41.8%)
 
