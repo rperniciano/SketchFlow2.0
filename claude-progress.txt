@@ -595,3 +595,27 @@ backoffDelays: [2000, 5000, 10000, 30000]
   6. ✅ Clear Search button available for user convenience
 - Screenshot: feature-46-special-characters-search.png
 - Console errors: Only unrelated ABP cookie warning (XSRF-TOKEN SameSite)
+
+=== Session: Feature #109 - Element Updates Broadcast to Participants ===
+Date: 2026-01-27
+
+## Feature Implemented
+- Feature #109: Element updates broadcast to participants
+- Description: Moving/resizing elements syncs to all users
+- Category: D. Workflow Completeness
+- Status: PASSED
+
+## Implementation Summary
+1. Added SignalR broadcast in saveElementUpdate() after successful DB save
+2. Added OnElementUpdated event handler in setupCursorEventHandler()
+3. Implemented handleRemoteElementUpdated() method (~90 lines)
+
+## Files Modified
+- angular/src/app/canvas/canvas.component.ts
+
+## Screenshot
+- feature-109-canvas-signalr-connected.png
+
+## Current Progress
+- Features passing: 81/273 (29.7%)
+- Feature #109 marked as passing
