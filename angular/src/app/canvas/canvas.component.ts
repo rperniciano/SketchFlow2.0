@@ -1,5 +1,6 @@
 import { Component, OnInit, OnDestroy, inject, AfterViewInit, ElementRef, ViewChild, HostListener, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription, forkJoin, of, from, catchError, tap, finalize } from 'rxjs';
 import { ConfigStateService } from '@abp/ng.core';
@@ -8,6 +9,7 @@ import { ConnectionService } from '../shared/services/connection.service';
 import { OfflineQueueService, QueuedOperation } from '../shared/services/offline-queue.service';
 import { SignalRService } from '../shared/services/signalr.service';
 import { ToastService } from '../shared/services/toast.service';
+import { GenerationService } from '../shared/services/generation.service';
 import { ConnectionLostBannerComponent } from '../shared/components/connection-lost-banner.component';
 import { ToastContainerComponent } from '../shared/components/toast-container.component';
 import * as fabric from 'fabric';
@@ -87,7 +89,7 @@ interface RemoteSelection {
 @Component({
   selector: 'app-canvas',
   standalone: true,
-  imports: [CommonModule, ConnectionLostBannerComponent, ToastContainerComponent],
+  imports: [CommonModule, FormsModule, ConnectionLostBannerComponent, ToastContainerComponent],
   template: `
     <div class="canvas-container">
       <div class="canvas-header">
@@ -351,6 +353,107 @@ interface RemoteSelection {
               <div class="cursor-label" [style.backgroundColor]="cursor.color">
                 {{ cursor.name || 'Anonymous' }}
               </div>
+            </div>
+          </div>
+
+          <!-- Generate Component Button (Feature #117: Generate Component button appears on selection) -->
+          <!-- Per spec: "Generate Component" button appears above selected region/elements -->
+          <!-- Per spec: Keyboard shortcut Ctrl+G triggers generation when selection active -->
+          <button
+            *ngIf="showGenerateButton && selectedElementCount > 0"
+            class="generate-component-btn"
+            [style.left.px]="generateButtonPosition.left"
+            [style.top.px]="generateButtonPosition.top"
+            (click)="onGenerateComponent()"
+            title="Generate Component (Ctrl+G)">
+            <i class="bi bi-magic"></i>
+            Generate Component
+          </button>
+        </div>
+
+        <!-- Code Panel (Feature #119: Code panel slides in on generation success) -->
+        <!-- Per spec: Fixed width 420px, slides in from right -->
+        <div
+          class="code-panel"
+          [class.open]="isCodePanelOpen"
+          role="dialog"
+          aria-label="Generated code panel">
+
+          <!-- Code Panel Header -->
+          <div class="code-panel-header">
+            <h3>Generated Component</h3>
+            <button
+              class="code-panel-close"
+              (click)="closeCodePanel()"
+              title="Close panel (Escape)"
+              aria-label="Close code panel">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+
+          <!-- Loading State (Feature #118: Shows loading during generation) -->
+          <div class="code-panel-loading" *ngIf="isGenerating">
+            <div class="loading-spinner"></div>
+            <p>Generating component...</p>
+            <p class="loading-hint">This may take up to 10 seconds</p>
+          </div>
+
+          <!-- Error State -->
+          <div class="code-panel-error" *ngIf="generationError && !isGenerating">
+            <i class="bi bi-exclamation-triangle"></i>
+            <p>{{ generationError }}</p>
+            <button class="btn-retry" (click)="retryGeneration()">
+              <i class="bi bi-arrow-clockwise"></i>
+              Try Again
+            </button>
+          </div>
+
+          <!-- Generated Code Content (Feature #119 verification: panel contains generated code) -->
+          <div class="code-panel-content" *ngIf="generatedCode && !isGenerating && !generationError">
+            <!-- Component Name (editable, per spec) -->
+            <div class="component-name-section">
+              <label for="componentName">Component Name</label>
+              <input
+                type="text"
+                id="componentName"
+                [(ngModel)]="componentName"
+                (blur)="enforceComponentNameFormat()"
+                class="component-name-input"
+                placeholder="ComponentName">
+            </div>
+
+            <!-- Code Display (per spec: syntax-highlighted, dark theme) -->
+            <div class="code-display">
+              <div class="code-header">
+                <span class="code-filename">{{ componentName }}.tsx</span>
+                <button
+                  class="btn-copy"
+                  (click)="copyGeneratedCode()"
+                  title="Copy code">
+                  <i class="bi bi-clipboard"></i>
+                  Copy
+                </button>
+              </div>
+              <pre class="code-block"><code>{{ generatedCode }}</code></pre>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="code-panel-actions">
+              <button class="btn-regenerate" (click)="regenerateComponent()">
+                <i class="bi bi-arrow-clockwise"></i>
+                Regenerate
+              </button>
+            </div>
+
+            <!-- Quota Display (per spec: "X / Y generations remaining") -->
+            <div class="quota-display">
+              <span class="quota-text">
+                {{ generationsLimit - generationsUsed }} / {{ generationsLimit }} generations remaining
+              </span>
+              <span class="quota-warning" *ngIf="generationsLimit - generationsUsed <= 5">
+                <i class="bi bi-exclamation-circle"></i>
+                Running low
+              </span>
             </div>
           </div>
         </div>
@@ -1121,6 +1224,7 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   private offlineQueueService = inject(OfflineQueueService); // For offline drawing support (Feature #103)
   private toastService = inject(ToastService); // For showing "Back online" toast (Feature #104)
   private signalRService = inject(SignalRService); // For real-time collaboration (Feature #100)
+  private generationService = inject(GenerationService); // For AI code generation (Feature #118)
 
   // Track previous connection state for detecting reconnection
   private wasDisconnected = false;
@@ -1141,6 +1245,22 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   zoomLevel = 1;
   selectedElementCount = 0;
   Math = Math;
+
+  // Generate Component button state (Feature #117: Generate Component button appears on selection)
+  // Per spec: "Generate Component" button appears above selection
+  showGenerateButton = false;
+  generateButtonPosition = { left: 0, top: 0 };
+
+  // Code Panel state (Feature #119: Code panel slides in on generation success)
+  // Per spec: Fixed width 420px, slides in from right
+  isCodePanelOpen = false;
+  isGenerating = false;
+  generatedCode = '';
+  componentName = 'GeneratedComponent';
+  generationError: string | null = null;
+  // Quota tracking (per spec: "X / Y generations remaining")
+  generationsUsed = 0;
+  generationsLimit = 30; // Default for authenticated users (per spec)
 
   // Drawing state
   private isDrawing = false;
@@ -1348,20 +1468,28 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
 
     // Set up selection event handlers
     // Feature #115: Selection highlight visible to other users - broadcast selection changes
+    // Feature #117: Generate Component button appears on selection
     this.canvas.on('selection:created', (e) => {
       this.selectedElementCount = e.selected?.length || 0;
       this.broadcastSelectionChange(e.selected || []);
+      this.updateGenerateButtonPosition();
     });
 
     this.canvas.on('selection:updated', (e) => {
       this.selectedElementCount = e.selected?.length || 0;
       this.broadcastSelectionChange(e.selected || []);
+      this.updateGenerateButtonPosition();
     });
 
     this.canvas.on('selection:cleared', () => {
       this.selectedElementCount = 0;
       this.broadcastSelectionChange([]);
+      this.hideGenerateButton();
     });
+
+    // Update button position when selection is moved or resized
+    this.canvas.on('object:moving', () => this.updateGenerateButtonPosition());
+    this.canvas.on('object:scaling', () => this.updateGenerateButtonPosition());
 
     // Set up drawing handlers
     this.canvas.on('mouse:down', (opt) => this.handleMouseDown(opt));
@@ -1475,6 +1603,9 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       // Remove the cursor
       this.remoteCursors.delete(data.connectionId);
 
+      // Feature #115: Clear remote selection highlights when participant leaves
+      this.clearAllRemoteSelectionsForParticipant(data.connectionId);
+
       // Feature #112: Show leave notification toast (per spec: subtle, 3s auto-dismiss)
       this.toastService.info(`${participantName} left the board`, 3000);
     });
@@ -1501,6 +1632,13 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     this.signalRService.on('OnElementsDeleted', (elementIds: string[]) => {
       console.log('[SignalR] Remote elements deleted:', elementIds);
       this.handleRemoteElementsDeleted(elementIds);
+    });
+
+    // Feature #115: Handle selection change from other participants
+    // Per spec: "Selection highlight visible to other users - When User A selects element, User B sees highlight"
+    this.signalRService.on('OnSelectionChanged', (data: { ConnectionId: string; ElementIds: string[]; Timestamp: string }) => {
+      console.log('[SignalR] Remote selection changed:', data);
+      this.handleRemoteSelectionChange(data);
     });
   }
 
@@ -1641,6 +1779,10 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
 
       // Re-render the canvas to show the update
       this.canvas.renderAll();
+
+      // Feature #115: Update any remote selection highlights for this element
+      this.updateRemoteSelectionHighlightForElement(elementId);
+
       console.log('[SignalR] Remote element updated successfully:', elementId);
     } catch (e) {
       console.error('[SignalR] Failed to update remote element:', e);
@@ -1669,6 +1811,9 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
         this.elementMap.delete(elementId);
         deletedCount++;
         this.elementLoadCount--;
+
+        // Feature #115: Remove any remote selection highlights for this element
+        this.removeRemoteSelectionHighlightsForElement(elementId);
       } else {
         console.warn('[SignalR] Element not found for deletion:', elementId);
       }
@@ -1739,6 +1884,281 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     }
     const index = Math.abs(hash) % this.cursorColors.length;
     return this.cursorColors[index];
+  }
+
+  /**
+   * Broadcast selection change to other participants (Feature #115)
+   * Per spec: "Selection highlight visible to others (user's color)"
+   */
+  private broadcastSelectionChange(selectedObjects: fabric.FabricObject[]): void {
+    // Get element IDs from selected objects
+    const elementIds: string[] = [];
+    for (const obj of selectedObjects) {
+      const elementId = (obj as any)._elementId;
+      if (elementId) {
+        elementIds.push(elementId);
+      }
+    }
+
+    // Broadcast via SignalR
+    this.signalRService.updateSelection(elementIds);
+    console.log('[Selection] Broadcasting selection change:', elementIds.length, 'elements');
+  }
+
+  /**
+   * Update the Generate Component button position based on selection bounding box (Feature #117)
+   * Per spec: "Button positioned above selection"
+   */
+  private updateGenerateButtonPosition(): void {
+    if (!this.canvas) {
+      this.hideGenerateButton();
+      return;
+    }
+
+    const activeObject = this.canvas.getActiveObject();
+    if (!activeObject) {
+      this.hideGenerateButton();
+      return;
+    }
+
+    // Get the bounding rect of the selection (works for single objects and groups)
+    const boundingRect = activeObject.getBoundingRect();
+
+    // Calculate center of selection horizontally
+    const centerX = boundingRect.left + (boundingRect.width / 2);
+
+    // Position button above the selection with some padding
+    // Button will be positioned so its center aligns with the selection center
+    const buttonWidth = 180; // Approximate button width
+    const buttonHeight = 36; // Approximate button height
+    const padding = 12; // Space between button and selection
+
+    // Calculate left position (center the button)
+    let left = centerX - (buttonWidth / 2);
+
+    // Calculate top position (above the selection)
+    let top = boundingRect.top - buttonHeight - padding;
+
+    // Ensure button stays within canvas bounds
+    const canvasWidth = this.canvas.getWidth();
+    const canvasHeight = this.canvas.getHeight();
+
+    // Clamp left position
+    if (left < 8) {
+      left = 8;
+    } else if (left + buttonWidth > canvasWidth - 8) {
+      left = canvasWidth - buttonWidth - 8;
+    }
+
+    // If button would be above canvas, put it below the selection instead
+    if (top < 8) {
+      top = boundingRect.top + boundingRect.height + padding;
+    }
+
+    // Update position and show button
+    this.generateButtonPosition = { left, top };
+    this.showGenerateButton = true;
+    console.log('[Generate] Button position updated:', { left, top, selectionBounds: boundingRect });
+  }
+
+  /**
+   * Hide the Generate Component button (Feature #117)
+   */
+  private hideGenerateButton(): void {
+    this.showGenerateButton = false;
+  }
+
+  /**
+   * Handle Generate Component button click (Feature #117)
+   * Per spec: Exports selection to PNG and initiates AI code generation
+   * Full implementation in Feature #118+
+   */
+  onGenerateComponent(): void {
+    if (!this.canvas || this.selectedElementCount === 0) {
+      console.log('[Generate] No elements selected');
+      return;
+    }
+
+    const activeObjects = this.canvas.getActiveObjects();
+    console.log('[Generate] Generating component from', activeObjects.length, 'selected elements');
+
+    // Show toast notification that generation is starting
+    this.toastService.info('Preparing to generate component...', 3000);
+
+    // TODO (Feature #118+): Export selection to PNG and send to AI service
+    // For now, just log the action
+    console.log('[Generate] Selected elements:', activeObjects.map(obj => (obj as any)._elementId || 'unknown'));
+  }
+
+  /**
+   * Handle remote selection change from another participant (Feature #115)
+   * Per spec: "When User A selects element, User B sees highlight"
+   */
+  private handleRemoteSelectionChange(data: { ConnectionId: string; ElementIds: string[]; Timestamp: string }): void {
+    console.log('[Selection] Remote selection changed:', data.ConnectionId, data.ElementIds);
+
+    const connectionId = data.ConnectionId;
+    const elementIds = data.ElementIds || [];
+
+    // Get the color for this participant
+    const color = this.getColorForConnection(connectionId);
+
+    // Clear existing highlights for this participant
+    this.clearRemoteSelectionHighlights(connectionId);
+
+    if (elementIds.length === 0) {
+      // User deselected - remove their selection from our tracking
+      this.remoteSelections.delete(connectionId);
+      return;
+    }
+
+    // Store the selection
+    this.remoteSelections.set(connectionId, {
+      connectionId,
+      elementIds,
+      color
+    });
+
+    // Create highlight rectangles for each selected element
+    this.createRemoteSelectionHighlights(connectionId, elementIds, color);
+  }
+
+  /**
+   * Create highlight rectangles around elements selected by a remote user (Feature #115)
+   */
+  private createRemoteSelectionHighlights(connectionId: string, elementIds: string[], color: string): void {
+    if (!this.canvas) return;
+
+    for (const elementId of elementIds) {
+      const element = this.elementMap.get(elementId);
+      if (!element) {
+        console.warn('[Selection] Element not found for remote highlight:', elementId);
+        continue;
+      }
+
+      // Get the bounding box of the element
+      const boundingRect = element.getBoundingRect();
+
+      // Create a highlight rectangle around the element
+      // Use a dashed stroke in the participant's color
+      const highlight = new fabric.Rect({
+        left: boundingRect.left - 4,
+        top: boundingRect.top - 4,
+        width: boundingRect.width + 8,
+        height: boundingRect.height + 8,
+        fill: 'transparent',
+        stroke: color,
+        strokeWidth: 2,
+        strokeDashArray: [5, 5], // Dashed line to distinguish from local selection
+        selectable: false,
+        evented: false,
+        excludeFromExport: true
+      });
+
+      // Mark this as a remote selection highlight
+      (highlight as any)._isRemoteHighlight = true;
+      (highlight as any)._remoteConnectionId = connectionId;
+      (highlight as any)._targetElementId = elementId;
+
+      // Store and add to canvas
+      const highlightKey = `${connectionId}:${elementId}`;
+      this.remoteSelectionHighlights.set(highlightKey, highlight);
+      this.canvas.add(highlight);
+    }
+
+    this.canvas.renderAll();
+  }
+
+  /**
+   * Clear highlight rectangles for a specific participant (Feature #115)
+   */
+  private clearRemoteSelectionHighlights(connectionId: string): void {
+    if (!this.canvas) return;
+
+    // Find and remove all highlights for this connection
+    const keysToRemove: string[] = [];
+    this.remoteSelectionHighlights.forEach((highlight, key) => {
+      if (key.startsWith(`${connectionId}:`)) {
+        this.canvas!.remove(highlight);
+        keysToRemove.push(key);
+      }
+    });
+
+    // Remove from our tracking map
+    for (const key of keysToRemove) {
+      this.remoteSelectionHighlights.delete(key);
+    }
+
+    if (keysToRemove.length > 0) {
+      this.canvas.renderAll();
+    }
+  }
+
+  /**
+   * Clear all remote selection highlights for a participant who left (Feature #115)
+   */
+  private clearAllRemoteSelectionsForParticipant(connectionId: string): void {
+    this.clearRemoteSelectionHighlights(connectionId);
+    this.remoteSelections.delete(connectionId);
+  }
+
+  /**
+   * Remove all remote selection highlights for a specific element (Feature #115)
+   * Called when an element is deleted
+   */
+  private removeRemoteSelectionHighlightsForElement(elementId: string): void {
+    if (!this.canvas) return;
+
+    // Find and remove all highlights targeting this element
+    const keysToRemove: string[] = [];
+    this.remoteSelectionHighlights.forEach((highlight, key) => {
+      if (key.endsWith(`:${elementId}`)) {
+        this.canvas!.remove(highlight);
+        keysToRemove.push(key);
+      }
+    });
+
+    // Remove from our tracking map
+    for (const key of keysToRemove) {
+      this.remoteSelectionHighlights.delete(key);
+    }
+
+    // Update remoteSelections map to remove this element from any selections
+    this.remoteSelections.forEach((selection) => {
+      const index = selection.elementIds.indexOf(elementId);
+      if (index !== -1) {
+        selection.elementIds.splice(index, 1);
+      }
+    });
+  }
+
+  /**
+   * Update remote selection highlights when an element is moved/resized (Feature #115)
+   * Call this after an element is modified to keep highlights in sync
+   */
+  private updateRemoteSelectionHighlightForElement(elementId: string): void {
+    if (!this.canvas) return;
+
+    const element = this.elementMap.get(elementId);
+    if (!element) return;
+
+    const boundingRect = element.getBoundingRect();
+
+    // Find all highlights targeting this element
+    this.remoteSelectionHighlights.forEach((highlight, key) => {
+      if (key.endsWith(`:${elementId}`)) {
+        // Update the highlight position and size
+        highlight.set({
+          left: boundingRect.left - 4,
+          top: boundingRect.top - 4,
+          width: boundingRect.width + 8,
+          height: boundingRect.height + 8
+        });
+        highlight.setCoords();
+      }
+    });
+
+    this.canvas.renderAll();
   }
 
   /**
@@ -2892,6 +3312,16 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     if ((event.ctrlKey || event.metaKey) && event.key === '1') {
       event.preventDefault();
       this.fitContentInView();
+      return;
+    }
+
+    // Handle Generate Component: Ctrl+G (Feature #117)
+    // Per spec: "Ctrl+G: Generate (when selection active)"
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'g') {
+      event.preventDefault();
+      if (this.selectedElementCount > 0) {
+        this.onGenerateComponent();
+      }
       return;
     }
 

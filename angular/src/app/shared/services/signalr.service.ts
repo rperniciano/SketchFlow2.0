@@ -179,6 +179,10 @@ export class SignalRService implements OnDestroy {
     this.hubConnection.on('OnElementsDeleted', (data) => {
       console.log('[SignalR] Elements deleted:', data);
     });
+
+    this.hubConnection.on('OnSelectionChanged', (data) => {
+      console.log('[SignalR] Selection changed:', data);
+    });
   }
 
   /**
@@ -243,6 +247,21 @@ export class SignalRService implements OnDestroy {
         await this.hubConnection!.invoke('DeleteElements', this.currentBoardId, elementIds);
       } catch (error) {
         console.error('[SignalR] Failed to delete elements:', error);
+      }
+    }
+  }
+
+  /**
+   * Broadcast selection change to other participants
+   * Feature #115: Selection highlight visible to other users
+   * @param elementIds Array of selected element IDs (empty array for deselection)
+   */
+  async updateSelection(elementIds: string[]): Promise<void> {
+    if (this.isConnected && this.currentBoardId) {
+      try {
+        await this.hubConnection!.invoke('UpdateSelection', this.currentBoardId, elementIds);
+      } catch (error) {
+        console.error('[SignalR] Failed to update selection:', error);
       }
     }
   }

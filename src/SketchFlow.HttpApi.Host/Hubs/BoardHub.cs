@@ -179,4 +179,27 @@ public class BoardHub : Hub
 
         _logger.LogDebug("Elements deleted on board {BoardId}: {Count} elements", boardId, elementIds.Length);
     }
+
+    /// <summary>
+    /// Broadcast selection change to other participants.
+    /// Feature #115: Selection highlight visible to other users
+    /// Per spec: "When User A selects element, User B sees highlight"
+    /// </summary>
+    /// <param name="boardId">The ID of the board</param>
+    /// <param name="elementIds">Array of selected element IDs (empty array means deselection)</param>
+    public async Task UpdateSelection(string boardId, string[] elementIds)
+    {
+        await Clients.OthersInGroup(boardId).SendAsync("OnSelectionChanged", new
+        {
+            ConnectionId = Context.ConnectionId,
+            ElementIds = elementIds,
+            Timestamp = DateTime.UtcNow
+        });
+
+        _logger.LogDebug(
+            "Selection updated on board {BoardId} by {ConnectionId}: {Count} elements",
+            boardId,
+            Context.ConnectionId,
+            elementIds.Length);
+    }
 }
