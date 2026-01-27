@@ -1,3 +1,64 @@
+=== Session: Feature #107 - Cursor Position Syncs in Real-Time ===
+Date: 2026-01-27
+
+## Feature Verified
+- Feature #107: "Cursor position syncs in real-time"
+- Description: "Remote cursor updates at ~30fps"
+- Category: D. Workflow Completeness
+- Status: PASSED ✓
+
+## Verification Steps Completed
+1. ✅ Opened board with two browser tabs (simulating two users)
+2. ✅ Verified SignalR connection established on both tabs
+3. ✅ Verified "Participant joined" events logged in console
+4. ✅ Reviewed cursor broadcasting code - throttled at 33ms (~30fps)
+5. ✅ Verified cursor receiving and display logic in handleRemoteCursorMove()
+6. ✅ Verified coordinate transformation for zoom/pan in canvasToScreenCoordinates()
+
+## Implementation Details (Already Implemented - Code Review Verified)
+The cursor sync feature was already fully implemented:
+
+1. **Cursor Broadcasting** (`broadcastCursorPosition` at line ~1375)
+   - Throttled to ~30fps (33ms interval per CURSOR_THROTTLE_MS)
+   - Gets canvas coordinates via getViewportPoint()
+   - Sends via SignalR updateCursor()
+
+2. **Cursor Receiving** (`handleRemoteCursorMove` at line ~1277)
+   - Converts canvas coords to screen coords
+   - Updates existing cursor or creates new one
+   - Assigns consistent color per connection
+
+3. **Remote Cursor Display** (HTML template at line ~230)
+   - Uses getRemoteCursorsArray() for *ngFor iteration
+   - CSS transition for smooth movement (50ms linear)
+   - Stale cursors fade to gray via isCursorStale()
+
+4. **SignalR Event Handlers** (`setupCursorEventHandler` at line ~1044)
+   - OnCursorMoved - handles incoming cursor positions
+   - OnParticipantJoined - initializes cursor on join
+   - OnParticipantLeft - removes cursor on leave
+
+5. **Cleanup** (`startCursorCleanupInterval` at line ~1336)
+   - Runs every 2 seconds
+   - Removes cursors inactive for 30+ seconds
+
+## Console Logs Observed
+- [SignalR] Participant joined: JSHandle@object
+- [SignalR] Participant left: JSHandle@object
+- [SignalR] Connected successfully
+- WebSocket connected to ws://localhost:5001/signalr/board
+
+## Key Code Files
+- angular/src/app/canvas/canvas.component.ts (cursor methods ~1275-1392)
+- angular/src/app/shared/services/signalr.service.ts (updateCursor method)
+- src/SketchFlow.HttpApi.Host/Hubs/BoardHub.cs (UpdateCursor hub method)
+
+## Current Progress
+- Features passing: 81/273 (29.7%)
+- Feature #107 marked as passing
+
+---
+
 === Session: Feature #104 - Queued Changes Sync on Reconnect ===
 Date: 2026-01-27
 
@@ -492,3 +553,45 @@ backoffDelays: [2000, 5000, 10000, 30000]
 ## Current Progress
 - Features passing: 77/273 (28.2%)
 - Feature #105 marked as passing
+[Testing] 2026-01-27 21:11:15 - Feature #99 regression test completed
+- Feature: Toolbar displays all drawing tools
+- Status: PASSING (no regression found)
+- Verification steps completed:
+  1. ✅ Opened canvas page (navigated to MyTestBoard)
+  2. ✅ Located left toolbar
+  3. ✅ Verified Selection tool (V) icon visible - arrow cursor icon
+  4. ✅ Verified Pen tool (P) icon visible - pen/pencil icon
+  5. ✅ Verified Rectangle tool (R) icon visible - square outline icon
+  6. ✅ Verified Circle tool (C) icon visible - circle outline icon
+  7. ✅ Verified Text tool (T) icon visible - 'Aa' text icon
+  8. ✅ Clicked each tool to verify functionality - all tools activate correctly
+- Screenshot: feature-99-toolbar-regression-test.png
+- Console errors: SignalR reconnection errors (transient, unrelated to toolbar)
+- No code changes required
+[Testing] 2026-01-27 21:15:11 - Feature #88 regression test completed
+- Feature: Zoom range limited to 0.1x - 10x
+- Status: PASSING (no regression found)
+- Verification steps completed:
+  1. ✅ Opened canvas page (ZOOM_TEST_85 board)
+  2. ✅ Zoomed out repeatedly using Ctrl+- (100% → 10%)
+  3. ✅ Verified zoom stops at 0.1x (10%) - min limit enforced
+  4. ✅ Zoomed in repeatedly using Ctrl+= (100% → 1000%)
+  5. ✅ Verified zoom stops at 10x (1000%) - max limit enforced
+- Code verification:
+  * MIN_ZOOM = 0.1 and MAX_ZOOM = 10 constants in canvas.component.ts
+  * All zoom methods (zoomIn, zoomOut, handleWheel, pinch) properly clamp values
+- Screenshots: feature-88-initial-canvas.png, feature-88-min-zoom-10-percent.png, feature-88-max-zoom-1000-percent.png
+- Console errors: Only unrelated ABP cookie warning (XSRF-TOKEN SameSite)
+- No code changes required
+[Testing] 2026-01-27 21:17:04 - Feature #46 regression test completed
+- Feature: Dashboard search handles special characters
+- Status: PASSING (no regression found)
+- Verification steps completed:
+  1. ✅ Navigated to dashboard
+  2. ✅ Typed special characters '!@#$%^&*()' in search box
+  3. ✅ Verified no error occurred - search handled gracefully
+  4. ✅ Verified appropriate empty state: 'No boards matching "!@#$%^&*()"'
+  5. ✅ Helpful message displayed: 'Try a different search term or create a new board.'
+  6. ✅ Clear Search button available for user convenience
+- Screenshot: feature-46-special-characters-search.png
+- Console errors: Only unrelated ABP cookie warning (XSRF-TOKEN SameSite)
