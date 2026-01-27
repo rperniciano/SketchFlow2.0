@@ -1,3 +1,61 @@
+=== Session: Feature #101 - Connection Status Indicator ===
+Date: 2026-01-27
+
+## Feature Verified
+- Feature #101: "Connection status indicator displays correctly"
+- Description: "Connection indicator shows green/yellow/red states"
+- Category: N. Feedback & Notification
+- Status: PASSED ✓
+
+## Verification Steps Completed
+1. ✅ Opened canvas page
+2. ✅ Verified green indicator when connected - Green dot with "Connected" text in green
+3. ✅ Simulated connection issue - Triggered offline event via browser API
+4. ✅ Verified indicator changes to yellow/red - Console showed state transitions
+5. ✅ Restored connection - Automatic reconnection via exponential backoff
+6. ✅ Verified indicator returns to green - Final state showed "Connected"
+
+## Implementation Details
+The connection status indicator was already implemented as part of Feature #102 (connection lost banner).
+The indicator is in the canvas component status bar:
+
+**HTML Template (lines 218-235):**
+- Connection status div with class "connection-status"
+- Circular indicator span with dynamic classes: .connected, .connecting, .disconnected
+- Text showing status: "Connected" / "Connecting..." / "Disconnected"
+- ARIA label for accessibility
+
+**CSS Styles (lines 545-595):**
+- .connection-indicator: 8px circular element with glow
+- .connected: Green (#10b981) with green glow
+- .connecting: Yellow (#f59e0b) with pulse animation
+- .disconnected: Red (#ef4444) with red glow
+- Matching text colors for status text
+
+## Console Logs Observed
+- [Connection] Browser offline event detected
+- [Connection] Status: Disconnected
+- [Connection] Scheduling reconnect attempt 1 in 2000ms
+- [Connection] Status: Connecting...
+- [Connection] Attempting reconnect (attempt 1)
+- [Connection] Status: Connected
+- [Connection] Connection restored! Syncing queued changes...
+- [Toast] Showing: success - Back online
+
+## Bug Fixed
+- Removed duplicate `syncQueuedChanges()` method definition that was causing TypeScript error
+- The stub at line ~2913 was conflicting with proper async implementation at line ~1359
+
+## Screenshots Captured
+- feature-101-connected-verified.png
+- feature-101-reconnected.png
+
+## Current Progress
+- Features passing: 74/273 (27.1%)
+- Feature #101 marked as passing
+
+---
+
 === Session: Feature #103 - Local Drawing Continues While Offline ===
 Date: 2026-01-27
 
