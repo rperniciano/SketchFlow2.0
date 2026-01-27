@@ -13,14 +13,20 @@ namespace SketchFlow.Boards;
 [Authorize]
 public class BoardAppService : SketchFlowAppService, IBoardAppService
 {
+    private const int MaxBoardsPerUser = 50;
+    private const int MaxElementsPerBoard = 5000;
+
     private readonly IRepository<Board, Guid> _boardRepository;
+    private readonly IRepository<BoardElement, Guid> _elementRepository;
     private readonly IDataFilter _dataFilter;
 
     public BoardAppService(
         IRepository<Board, Guid> boardRepository,
+        IRepository<BoardElement, Guid> elementRepository,
         IDataFilter dataFilter)
     {
         _boardRepository = boardRepository;
+        _elementRepository = elementRepository;
         _dataFilter = dataFilter;
     }
 
@@ -96,6 +102,16 @@ public class BoardAppService : SketchFlowAppService, IBoardAppService
     public async Task<BoardDto> CreateAsync(CreateBoardDto input)
     {
         var userId = CurrentUser.Id ?? throw new UnauthorizedAccessException();
+
+        // Check board limit
+        var queryable = await _boardRepository.GetQueryableAsync();
+        var currentBoardCount = queryable.Count(b => b.OwnerId == userId);
+
+        if (currentBoardCount >= MaxBoardsPerUser)
+        {
+            throw new BusinessException("SketchFlow:BoardLimitReached")
+                .WithData("maxBoards", MaxBoardsPerUser);
+        }
 
         var board = new Board(
             GuidGenerator.Create(),
@@ -256,6 +272,94 @@ public class BoardAppService : SketchFlowAppService, IBoardAppService
         return deletedCount;
     }
 
+    // ============ BOARD ELEMENTS ============
+
+    [AllowAnonymous]
+    public async Task<List<BoardElementDto>> GetElementsAsync(Guid boardId)
+    {
+        // First check if board exists (allow anonymous access via share token later)
+        var board = await _boardRepository.FindAsync(boardId);
+        if (board == null)
+        {
+            throw new BusinessException("SketchFlow:BoardNotFound");
+        }
+
+        var queryable = await _elementRepository.GetQueryableAsync();
+        var elements = queryable
+            .Where(e => e.BoardId == boardId)
+            .OrderBy(e => e.ZIndex)
+            .ThenBy(e => e.CreatedAt)
+            .ToList();
+
+        return elements.Select(MapElementToDto).ToList();
+    }
+
+    public async Task<BoardElementDto> CreateElementAsync(Guid boardId, CreateBoardElementDto input)
+    {
+        var userId = CurrentUser.Id;
+
+        // Check if board exists and user has access (owner or guest via share token)
+        var board = await _boardRepository.FindAsync(boardId);
+        if (board == null)
+        {
+            throw new BusinessException("SketchFlow:BoardNotFound");
+        }
+
+        // Check element count limit
+        var queryable = await _elementRepository.GetQueryableAsync();
+        var elementCount = queryable.Count(e => e.BoardId == boardId);
+        if (elementCount >= MaxElementsPerBoard)
+        {
+            throw new BusinessException("SketchFlow:ElementLimitReached")
+                .WithData("maxElements", MaxElementsPerBoard);
+        }
+
+        var element = new BoardElement(
+            GuidGenerator.Create(),
+            boardId,
+            input.ElementData,
+            input.ZIndex,
+            userId,
+            null // TODO: Support guest session ID
+        );
+
+        await _elementRepository.InsertAsync(element);
+
+        return MapElementToDto(element);
+    }
+
+    public async Task<BoardElementDto> UpdateElementAsync(Guid boardId, Guid elementId, UpdateBoardElementDto input)
+    {
+        var element = await _elementRepository.FindAsync(e => e.Id == elementId && e.BoardId == boardId);
+        if (element == null)
+        {
+            throw new BusinessException("SketchFlow:ElementNotFound");
+        }
+
+        element.SetElementData(input.ElementData);
+        if (input.ZIndex.HasValue)
+        {
+            element.SetZIndex(input.ZIndex.Value);
+        }
+
+        await _elementRepository.UpdateAsync(element);
+
+        return MapElementToDto(element);
+    }
+
+    public async Task DeleteElementsAsync(Guid boardId, List<Guid> elementIds)
+    {
+        var queryable = await _elementRepository.GetQueryableAsync();
+        var elements = queryable
+            .Where(e => e.BoardId == boardId && elementIds.Contains(e.Id))
+            .ToList();
+
+        foreach (var element in elements)
+        {
+            await _elementRepository.DeleteAsync(element);
+        }
+    }
+
     private static BoardDto MapToDto(Board board, int participantCount = 1)
     {
         return new BoardDto
@@ -270,6 +374,21 @@ public class BoardAppService : SketchFlowAppService, IBoardAppService
             IsDeleted = board.IsDeleted,
             DeletionTime = board.DeletionTime,
             ParticipantCount = participantCount
+        };
+    }
+
+    private static BoardElementDto MapElementToDto(BoardElement element)
+    {
+        return new BoardElementDto
+        {
+            Id = element.Id,
+            BoardId = element.BoardId,
+            CreatorUserId = element.CreatorUserId,
+            CreatorGuestSessionId = element.CreatorGuestSessionId,
+            ElementData = element.ElementData,
+            ZIndex = element.ZIndex,
+            CreatedAt = element.CreatedAt,
+            UpdatedAt = element.UpdatedAt
         };
     }
 }
