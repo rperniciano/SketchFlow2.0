@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.Concurrent;
 using System.Threading.Tasks;
 
 namespace SketchFlow.Hubs;
@@ -13,6 +14,10 @@ namespace SketchFlow.Hubs;
 public class BoardHub : Hub
 {
     private readonly ILogger<BoardHub> _logger;
+
+    // Track which board each connection is associated with
+    // Key: ConnectionId, Value: BoardId
+    private static readonly ConcurrentDictionary<string, string> ConnectionBoardMap = new();
 
     public BoardHub(ILogger<BoardHub> logger)
     {
@@ -30,6 +35,7 @@ public class BoardHub : Hub
 
     /// <summary>
     /// Called when a client disconnects from the hub.
+    /// Feature #112: Broadcast OnParticipantLeft when client disconnects (e.g., closes tab)
     /// </summary>
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
@@ -40,6 +46,22 @@ public class BoardHub : Hub
         else
         {
             _logger.LogInformation("Client disconnected: {ConnectionId}", Context.ConnectionId);
+        }
+
+        // Check if this connection was associated with a board and notify others
+        if (ConnectionBoardMap.TryRemove(Context.ConnectionId, out var boardId))
+        {
+            _logger.LogInformation(
+                "Client {ConnectionId} disconnected from board {BoardId}, notifying participants",
+                Context.ConnectionId,
+                boardId);
+
+            // Notify other participants that this user left
+            await Clients.Group(boardId).SendAsync("OnParticipantLeft", new
+            {
+                ConnectionId = Context.ConnectionId,
+                Timestamp = DateTime.UtcNow
+            });
         }
 
         await base.OnDisconnectedAsync(exception);
@@ -53,6 +75,9 @@ public class BoardHub : Hub
     /// <param name="guestName">Optional name for guest users</param>
     public async Task JoinBoard(string boardId, string? guestName = null)
     {
+        // Track the connection-to-board mapping for disconnect handling
+        ConnectionBoardMap[Context.ConnectionId] = boardId;
+
         await Groups.AddToGroupAsync(Context.ConnectionId, boardId);
 
         _logger.LogInformation(
@@ -85,6 +110,9 @@ public class BoardHub : Hub
     /// <param name="boardId">The ID of the board to leave</param>
     public async Task LeaveBoard(string boardId)
     {
+        // Remove the connection-to-board mapping
+        ConnectionBoardMap.TryRemove(Context.ConnectionId, out _);
+
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, boardId);
 
         _logger.LogInformation(
