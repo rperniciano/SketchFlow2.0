@@ -2133,3 +2133,60 @@ simplifying sketches and a "Try Again" button to retry.
 - Features passing: 109/273 (39.9%)
 - Feature #138 marked as passing
 
+=== Session: Feature #137 - Code Generation Failure Shows Retry Option ===
+Date: 2026-01-27
+
+## Feature Verified
+- Feature #137: "Code generation failure shows retry option"
+- Description: "Claude generation error has retry capability"
+- Category: E. Error Handling
+- Status: PASSED ✓
+
+## Implementation Summary
+This feature was already implemented as part of Feature #136 (vision failure) and Feature #138 (timeout failure).
+The verification confirms the retry functionality works correctly for code generation failures.
+
+### Key Components (already in canvas.component.ts)
+1. **Error State UI** (lines 412-420)
+   - Error message display with warning icon
+   - "Try Again" button with retry icon
+   - Conditional rendering when `generationError && !isGenerating`
+
+2. **retryGeneration() method** (lines 3403-3408)
+   - Clears generationError
+   - Clears generationErrorType
+   - Calls onGenerateComponent() to retry
+
+3. **Error types supported**
+   - 'vision_failed' - "Couldn't understand this sketch" + tips
+   - 'timeout' - "Taking too long. Sketch might be too complex." + tips
+   - 'rate_limit' - Rate limit exceeded with reset time
+
+### CSS Styling (lines 1503-1518)
+- `.btn-retry` - Indigo/purple button styling with hover effects
+- Matches Elite design system
+
+## Verification Steps Completed
+1. ✅ Trigger code generation failure scenario - Used Ctrl+Shift+F to simulate vision failure
+2. ✅ Verify error message displayed - "Couldn't understand this sketch" shown in code panel
+3. ✅ Verify 'Try again' or retry option present - "Try Again" button with icon visible
+4. ✅ Click retry - Clicked "Try Again" button
+5. ✅ Verify new attempt initiates - Console showed "[CodePanel] Retrying generation..." and generation completed successfully
+
+## Screenshots Captured
+- feature-137-error-with-retry-button.png - Error UI with retry button visible
+- feature-137-retry-in-progress.png - Loading state during retry
+- feature-137-retry-success.png - Successful generation after retry (BoxComponent.tsx)
+
+## Console Log Evidence
+- [Test] Simulating vision analysis failure for Feature #136 testing
+- [Toast] Showing: error - Couldn't understand this sketch
+- [CodePanel] Retrying generation...
+- [Generate] Starting component generation from selection...
+- [Generation] MOCK Generation completed: BoxComponent.tsx
+- [Toast] Showing: success - Component "BoxComponent" generated in 5.5s
+
+## Current Progress
+- Features passing: 112/273 (41.0%)
+- Feature #137 marked as passing
+
