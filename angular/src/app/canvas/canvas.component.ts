@@ -547,6 +547,17 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly MAX_ZOOM = 10;
   private readonly ZOOM_STEP = 0.1; // 10% zoom increments
 
+  // Space+drag panning state (per spec: Space+drag pans the canvas)
+  private isSpacePressed = false;
+  private isPanning = false;
+  private lastPanPoint: { x: number; y: number } | null = null;
+
+  // Two-finger touch panning state (per spec: Two-finger drag pans on touch devices)
+  private isTouchPanning = false;
+  private lastTouchPanPoint: { x: number; y: number } | null = null;
+  private initialTouchDistance: number | null = null;
+  private initialTouchZoom: number | null = null; // Store zoom level when pinch starts (Feature #93)
+
   colors: CanvasColors[] = [
     { name: 'Black', value: '#000000' },
     { name: 'White', value: '#ffffff' },
@@ -656,6 +667,9 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     this.canvas.on('mouse:wheel', (opt) => {
       this.handleMouseWheelZoom(opt.e as WheelEvent);
     });
+
+    // Set up touch event handlers for two-finger panning (per spec: Two-finger drag pans on touch devices)
+    this.setupTouchHandlers();
 
     // Start auto-save timer (5-second interval per spec)
     this.startAutoSaveTimer();
@@ -1034,6 +1048,22 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
+    // Skip drawing if two-finger touch panning is active (per spec: elements do not draw during pan)
+    if (this.isTouchPanning) {
+      return;
+    }
+
+    // Handle Space+drag panning (per spec: Space+drag pans the canvas)
+    if (this.isSpacePressed) {
+      this.isPanning = true;
+      const e = opt.e as MouseEvent;
+      this.lastPanPoint = { x: e.clientX, y: e.clientY };
+      this.canvas.defaultCursor = 'grabbing';
+      this.canvas.hoverCursor = 'grabbing';
+      console.log('[Canvas] Started panning');
+      return;
+    }
+
     // Handle Shift+click for multi-selection in select mode
     if (this.currentTool === 'select' && opt.e.shiftKey && opt.target) {
       this.handleShiftClickSelection(opt.target);
@@ -1104,7 +1134,34 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private handleMouseMove(opt: fabric.TPointerEventInfo<fabric.TPointerEvent>): void {
-    if (!this.canvas || !this.isDrawing || !this.currentShape) {
+    if (!this.canvas) {
+      return;
+    }
+
+    // Skip drawing if two-finger touch panning is active (per spec: elements do not draw during pan)
+    if (this.isTouchPanning) {
+      return;
+    }
+
+    // Handle panning when Space is held (per spec: Space+drag pans the canvas)
+    if (this.isPanning && this.lastPanPoint) {
+      const e = opt.e as MouseEvent;
+      const deltaX = e.clientX - this.lastPanPoint.x;
+      const deltaY = e.clientY - this.lastPanPoint.y;
+
+      // Get current viewport transform
+      const vpt = this.canvas.viewportTransform!;
+      vpt[4] += deltaX;
+      vpt[5] += deltaY;
+      this.canvas.setViewportTransform(vpt);
+
+      this.lastPanPoint = { x: e.clientX, y: e.clientY };
+      this.canvas.requestRenderAll();
+      return;
+    }
+
+    // Normal drawing mode - need to be drawing and have a shape
+    if (!this.isDrawing || !this.currentShape) {
       return;
     }
 
@@ -1228,6 +1285,30 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
 
   @HostListener('window:keydown', ['$event'])
   handleKeyboardShortcut(event: KeyboardEvent): void {
+    // Handle Space key for panning (per spec: Space+drag pans the canvas)
+    if (event.code === 'Space' && !this.isSpacePressed) {
+      // Don't activate pan mode if typing in a text field
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      // Don't activate pan mode if editing text in canvas
+      const activeObject = this.canvas?.getActiveObject();
+      if (activeObject instanceof fabric.IText && activeObject.isEditing) {
+        return;
+      }
+
+      event.preventDefault();
+      this.isSpacePressed = true;
+      console.log('[Canvas] Space key pressed - pan mode enabled');
+
+      // Change cursor to indicate pan mode
+      if (this.canvas) {
+        this.canvas.defaultCursor = 'grab';
+        this.canvas.hoverCursor = 'grab';
+      }
+      return;
+    }
+
     // Don't trigger shortcuts when typing in text (except for Ctrl combinations)
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
       // Only allow Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y in text inputs for undo/redo
@@ -1284,6 +1365,13 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     if ((event.ctrlKey || event.metaKey) && event.key === '0') {
       event.preventDefault();
       this.resetZoom();
+      return;
+    }
+
+    // Handle Fit Content in View: Ctrl+1
+    if ((event.ctrlKey || event.metaKey) && event.key === '1') {
+      event.preventDefault();
+      this.fitContentInView();
       return;
     }
 
@@ -1387,6 +1475,26 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     });
 
     console.log(`[Canvas] Moved ${activeObjects.length} element(s) by (${deltaX}, ${deltaY})`);
+  }
+
+  /**
+   * Handle keyup events to detect when Space key is released
+   * This ends pan mode and restores normal tool behavior
+   */
+  @HostListener('window:keyup', ['$event'])
+  handleKeyUp(event: KeyboardEvent): void {
+    if (event.code === 'Space' && this.isSpacePressed) {
+      this.isSpacePressed = false;
+      this.isPanning = false;
+      this.lastPanPoint = null;
+      console.log('[Canvas] Space key released - pan mode disabled');
+
+      // Restore default cursor
+      if (this.canvas) {
+        this.canvas.defaultCursor = 'default';
+        this.canvas.hoverCursor = 'move';
+      }
+    }
   }
 
   @HostListener('window:resize')
@@ -1711,6 +1819,103 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   /**
+   * Fit all content in viewport (Ctrl+1)
+   * Calculates bounding box of all objects and sets zoom/pan to show everything
+   */
+  fitContentInView(): void {
+    if (!this.canvas) return;
+
+    const objects = this.canvas.getObjects();
+    if (objects.length === 0) {
+      // No content to fit - just reset to center
+      this.resetZoom();
+      console.log('[Canvas] Fit content: No objects, reset to 100%');
+      return;
+    }
+
+    // Get the bounding box that contains all objects
+    const boundingBox = this.getObjectsBoundingBox(objects);
+    if (!boundingBox) {
+      this.resetZoom();
+      return;
+    }
+
+    const { minX, minY, maxX, maxY } = boundingBox;
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+
+    // Add padding (10% on each side)
+    const paddingFactor = 0.1;
+    const paddedWidth = contentWidth * (1 + paddingFactor * 2);
+    const paddedHeight = contentHeight * (1 + paddingFactor * 2);
+
+    // Get canvas dimensions
+    const canvasWidth = this.canvas.getWidth();
+    const canvasHeight = this.canvas.getHeight();
+
+    // Calculate zoom to fit content with padding
+    const zoomX = canvasWidth / paddedWidth;
+    const zoomY = canvasHeight / paddedHeight;
+    let fitZoom = Math.min(zoomX, zoomY);
+
+    // Clamp zoom to valid range
+    fitZoom = Math.max(this.MIN_ZOOM, Math.min(this.MAX_ZOOM, fitZoom));
+
+    // Calculate the center of the content
+    const contentCenterX = (minX + maxX) / 2;
+    const contentCenterY = (minY + maxY) / 2;
+
+    // Reset viewport transform first
+    this.canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+
+    // Apply zoom
+    this.canvas.setZoom(fitZoom);
+    this.zoomLevel = fitZoom;
+
+    // Calculate the translation needed to center the content
+    const vpCenter = this.canvas.getCenterPoint();
+    const panX = vpCenter.x - contentCenterX * fitZoom;
+    const panY = vpCenter.y - contentCenterY * fitZoom;
+
+    // Get current viewport transform and apply pan
+    const vpt = this.canvas.viewportTransform!;
+    vpt[4] = panX;
+    vpt[5] = panY;
+    this.canvas.setViewportTransform(vpt);
+
+    this.canvas.requestRenderAll();
+    console.log(`[Canvas] Fit content in view: ${objects.length} objects, zoom: ${Math.round(fitZoom * 100)}%`);
+  }
+
+  /**
+   * Calculate the bounding box that contains all given objects
+   * @param objects - Array of fabric objects
+   * @returns The bounding box coordinates or null if no valid objects
+   */
+  private getObjectsBoundingBox(objects: fabric.Object[]): { minX: number; minY: number; maxX: number; maxY: number } | null {
+    if (objects.length === 0) return null;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const obj of objects) {
+      // Get the bounding rect for each object (includes transformations)
+      const boundingRect = obj.getBoundingRect();
+
+      minX = Math.min(minX, boundingRect.left);
+      minY = Math.min(minY, boundingRect.top);
+      maxX = Math.max(maxX, boundingRect.left + boundingRect.width);
+      maxY = Math.max(maxY, boundingRect.top + boundingRect.height);
+    }
+
+    if (minX === Infinity || minY === Infinity) return null;
+
+    return { minX, minY, maxX, maxY };
+  }
+
+  /**
    * Set the canvas zoom level
    * @param zoom - The new zoom level (0.1 to 10)
    */
@@ -1758,6 +1963,159 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
 
     this.canvas.requestRenderAll();
     console.log(`[Canvas] Mouse wheel zoom: ${Math.round(this.zoomLevel * 100)}%`);
+  }
+
+  /**
+   * Set up touch event handlers for two-finger panning
+   * Per spec: Two-finger drag pans on touch devices
+   */
+  private setupTouchHandlers(): void {
+    if (!this.canvasWrapperRef) return;
+
+    const wrapper = this.canvasWrapperRef.nativeElement;
+    const upperCanvas = wrapper.querySelector('.upper-canvas') as HTMLCanvasElement;
+    const targetElement = upperCanvas || wrapper;
+
+    // Touch start - detect two-finger gesture
+    targetElement.addEventListener('touchstart', (e: TouchEvent) => this.handleTouchStart(e), { passive: false });
+
+    // Touch move - handle panning
+    targetElement.addEventListener('touchmove', (e: TouchEvent) => this.handleTouchMove(e), { passive: false });
+
+    // Touch end - stop panning
+    targetElement.addEventListener('touchend', (e: TouchEvent) => this.handleTouchEnd(e), { passive: false });
+    targetElement.addEventListener('touchcancel', (e: TouchEvent) => this.handleTouchEnd(e), { passive: false });
+
+    console.log('[Canvas] Touch event handlers set up for two-finger panning');
+  }
+
+  /**
+   * Handle touch start event
+   * When two fingers are detected, initiate panning mode
+   */
+  private handleTouchStart(event: TouchEvent): void {
+    if (!this.canvas) return;
+
+    // Two-finger touch detected - start panning
+    if (event.touches.length === 2) {
+      // Prevent default to stop any drawing while panning
+      event.preventDefault();
+
+      this.isTouchPanning = true;
+
+      // Calculate the midpoint between the two touches
+      const midpoint = this.getTouchMidpoint(event.touches[0], event.touches[1]);
+      this.lastTouchPanPoint = midpoint;
+
+      // Store initial distance and zoom for pinch-to-zoom (Feature #93)
+      this.initialTouchDistance = this.getTouchDistance(event.touches[0], event.touches[1]);
+      this.initialTouchZoom = this.zoomLevel;
+
+      // Disable canvas interactions during pan
+      this.canvas.discardActiveObject();
+      this.canvas.requestRenderAll();
+
+      console.log('[Canvas] Two-finger touch panning started');
+    }
+  }
+
+  /**
+   * Handle touch move event
+   * Pan the canvas when two fingers are moving together
+   * Pinch-to-zoom when fingers spread apart or come together (Feature #93)
+   */
+  private handleTouchMove(event: TouchEvent): void {
+    if (!this.canvas) return;
+
+    // Only handle when two fingers are down and we're in touch panning mode
+    if (this.isTouchPanning && event.touches.length === 2 && this.lastTouchPanPoint) {
+      // Prevent default to stop drawing and scrolling
+      event.preventDefault();
+
+      // Calculate the current midpoint
+      const currentMidpoint = this.getTouchMidpoint(event.touches[0], event.touches[1]);
+
+      // === PINCH-TO-ZOOM (Feature #93) ===
+      // Calculate current distance between fingers
+      const currentDistance = this.getTouchDistance(event.touches[0], event.touches[1]);
+
+      if (this.initialTouchDistance && this.initialTouchZoom && currentDistance > 0) {
+        // Calculate zoom scale based on finger distance ratio
+        const scale = currentDistance / this.initialTouchDistance;
+        let newZoom = this.initialTouchZoom * scale;
+
+        // Clamp zoom to valid range (per spec: 0.1x to 10x)
+        newZoom = Math.max(this.MIN_ZOOM, Math.min(this.MAX_ZOOM, newZoom));
+
+        // Only update if zoom actually changed
+        if (Math.abs(newZoom - this.zoomLevel) > 0.001) {
+          // Get the canvas element's bounding rect for coordinate conversion
+          const canvasElement = this.canvas.getElement();
+          const rect = canvasElement.getBoundingClientRect();
+
+          // Convert midpoint to canvas coordinates
+          const zoomPointX = currentMidpoint.x - rect.left;
+          const zoomPointY = currentMidpoint.y - rect.top;
+
+          // Apply zoom centered on pinch midpoint
+          this.canvas.zoomToPoint(new fabric.Point(zoomPointX, zoomPointY), newZoom);
+          this.zoomLevel = newZoom;
+
+          console.log(`[Canvas] Pinch zoom: ${(newZoom * 100).toFixed(0)}%`);
+        }
+      }
+
+      // === PANNING ===
+      // Calculate the delta from last position
+      const deltaX = currentMidpoint.x - this.lastTouchPanPoint.x;
+      const deltaY = currentMidpoint.y - this.lastTouchPanPoint.y;
+
+      // Apply panning to viewport transform
+      const vpt = this.canvas.viewportTransform!;
+      vpt[4] += deltaX;
+      vpt[5] += deltaY;
+      this.canvas.setViewportTransform(vpt);
+
+      // Update last point
+      this.lastTouchPanPoint = currentMidpoint;
+
+      this.canvas.requestRenderAll();
+    }
+  }
+
+  /**
+   * Handle touch end event
+   * Stop panning and pinch-zoom when fingers are lifted
+   */
+  private handleTouchEnd(event: TouchEvent): void {
+    // Stop panning/zooming if less than 2 fingers are now touching
+    if (this.isTouchPanning && event.touches.length < 2) {
+      this.isTouchPanning = false;
+      this.lastTouchPanPoint = null;
+      this.initialTouchDistance = null;
+      this.initialTouchZoom = null; // Reset pinch-zoom state (Feature #93)
+      console.log('[Canvas] Two-finger touch gesture ended');
+    }
+  }
+
+  /**
+   * Calculate the midpoint between two touch points
+   */
+  private getTouchMidpoint(touch1: Touch, touch2: Touch): { x: number; y: number } {
+    return {
+      x: (touch1.clientX + touch2.clientX) / 2,
+      y: (touch1.clientY + touch2.clientY) / 2
+    };
+  }
+
+  /**
+   * Calculate the distance between two touch points
+   * Used for pinch-to-zoom detection (Feature #93)
+   */
+  private getTouchDistance(touch1: Touch, touch2: Touch): number {
+    const dx = touch1.clientX - touch2.clientX;
+    const dy = touch1.clientY - touch2.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
   }
 
   loadGuestSession(boardId: string | null): void {
