@@ -2,6 +2,7 @@ import { Component, OnInit, OnDestroy, inject, AfterViewInit, ElementRef, ViewCh
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription, forkJoin, of, from, catchError, tap, finalize } from 'rxjs';
+import { ConfigStateService } from '@abp/ng.core';
 import { BoardService, BoardDto, BoardElementDto, CreateBoardElementDto } from '../shared/services/board.service';
 import { ConnectionService } from '../shared/services/connection.service';
 import { OfflineQueueService, QueuedOperation } from '../shared/services/offline-queue.service';
@@ -67,6 +68,15 @@ interface RemoteCursor {
   lastUpdate: number; // Timestamp of last update
 }
 
+// Interface for participant display (Feature #113: Participant avatars display in toolbar)
+interface Participant {
+  id: string;        // Connection ID or user ID
+  name: string;      // Display name
+  color: string;     // Avatar/cursor color
+  initials: string;  // 1-2 character initials for avatar
+  isSelf: boolean;   // True if this is the current user
+}
+
 @Component({
   selector: 'app-canvas',
   standalone: true,
@@ -79,6 +89,32 @@ interface RemoteCursor {
           {{ isGuest ? 'Leave Board' : 'Back to Dashboard' }}
         </button>
         <h1 class="board-name" *ngIf="board">{{ board.name }}</h1>
+
+        <!-- Spacer to push avatars to the right -->
+        <div class="header-spacer"></div>
+
+        <!-- Participant Avatars (Feature #113: Participant avatars display in toolbar) -->
+        <!-- Per spec: Participant avatars in toolbar (max 5 shown + overflow count) -->
+        <div class="participant-avatars" *ngIf="board">
+          <!-- Show first 5 participants -->
+          <div
+            *ngFor="let participant of getDisplayedParticipants(); trackBy: trackParticipantById"
+            class="participant-avatar"
+            [style.backgroundColor]="participant.color"
+            [class.self]="participant.isSelf"
+            [title]="participant.name + (participant.isSelf ? ' (You)' : '')">
+            {{ participant.initials }}
+          </div>
+
+          <!-- Overflow count if more than 5 participants -->
+          <div
+            *ngIf="getOverflowCount() > 0"
+            class="participant-overflow"
+            [title]="getOverflowCount() + ' more participants'">
+            +{{ getOverflowCount() }}
+          </div>
+        </div>
+
         <div class="guest-badge" *ngIf="isGuest && guestSession">
           <i class="bi bi-person"></i>
           {{ guestSession.guestName }}
@@ -362,8 +398,85 @@ interface RemoteCursor {
       margin: 0;
     }
 
+    /* Spacer to push avatars to the right */
+    .header-spacer {
+      flex: 1;
+    }
+
+    /* Participant Avatars (Feature #113) */
+    /* Per spec: Participant avatars in toolbar (max 5 shown + overflow count) */
+    .participant-avatars {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .participant-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #ffffff;
+      text-transform: uppercase;
+      border: 2px solid transparent;
+      transition: all 0.2s ease;
+      cursor: default;
+      /* Glassmorphism effect */
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .participant-avatar:hover {
+      transform: scale(1.1);
+      z-index: 1;
+    }
+
+    /* Self avatar has a distinct border */
+    .participant-avatar.self {
+      border-color: #ffffff;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Overlap avatars slightly for a stacked appearance */
+    .participant-avatar:not(:first-child) {
+      margin-left: -8px;
+    }
+
+    .participant-avatar:hover {
+      margin-left: 0;
+    }
+
+    .participant-avatar:hover + .participant-avatar {
+      margin-left: -8px;
+    }
+
+    /* Overflow count badge */
+    .participant-overflow {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #ffffff;
+      background: rgba(99, 102, 241, 0.6);
+      border: 2px solid rgba(99, 102, 241, 0.8);
+      margin-left: -8px;
+      cursor: default;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .participant-overflow:hover {
+      background: rgba(99, 102, 241, 0.8);
+      transform: scale(1.1);
+    }
+
     .guest-badge {
-      margin-left: auto;
       display: flex;
       align-items: center;
       gap: 0.5rem;
@@ -373,10 +486,10 @@ interface RemoteCursor {
       border-radius: 20px;
       color: #c4b5fd;
       font-size: 0.875rem;
+      margin-left: 1rem;
     }
 
     .board-status {
-      margin-left: auto;
       color: #a1a1aa;
     }
 
@@ -742,6 +855,7 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private boardService = inject(BoardService);
+  private configState = inject(ConfigStateService); // For getting current user info (Feature #113)
   connectionService = inject(ConnectionService); // Exposed for testing connection loss banner
   private offlineQueueService = inject(OfflineQueueService); // For offline drawing support (Feature #103)
   private toastService = inject(ToastService); // For showing "Back online" toast (Feature #104)
@@ -831,6 +945,14 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
     '#8b5cf6', // Purple
     '#ec4899', // Pink
   ];
+
+  // Self participant info (Feature #113: Participant avatars display in toolbar)
+  // The current user's color - consistent across the session
+  private selfCursorColor = '#6366f1'; // Indigo for self (matches brand)
+  private selfName = 'You';
+
+  // Maximum avatars to display before showing overflow
+  private readonly MAX_DISPLAYED_AVATARS = 5;
 
   colors: CanvasColors[] = [
     { name: 'Black', value: '#000000' },
@@ -1021,15 +1143,15 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
 
     console.log('[SignalR] Connecting to board:', this.board.id);
 
-    // Set up cursor event handler BEFORE connecting (Feature #106: Remote cursor displays)
-    this.setupCursorEventHandler();
-
     // Start cursor cleanup interval to remove stale cursors
     this.startCursorCleanupInterval();
 
     this.signalRService.connect(this.board.id, guestName)
       .then(() => {
         console.log('[SignalR] Successfully connected to board');
+        // Set up cursor event handler AFTER connecting (Feature #106: Remote cursor displays)
+        // The hubConnection must exist before we can register handlers
+        this.setupCursorEventHandler();
       })
       .catch(error => {
         console.error('[SignalR] Failed to connect:', error);
@@ -1067,10 +1189,20 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
       this.toastService.info(`${participantName} joined the board`, 3000);
     });
 
-    // Handle participant leave to remove cursor
+    // Handle participant leave to remove cursor and show notification (Feature #112)
+    // Per spec: "Toast: User left board (subtle, 3s auto-dismiss)"
     this.signalRService.on('OnParticipantLeft', (data: { connectionId: string }) => {
       console.log('[Cursor] Participant left:', data.connectionId);
+
+      // Get participant name before removing cursor
+      const cursor = this.remoteCursors.get(data.connectionId);
+      const participantName = cursor?.name || 'User';
+
+      // Remove the cursor
       this.remoteCursors.delete(data.connectionId);
+
+      // Feature #112: Show leave notification toast (per spec: subtle, 3s auto-dismiss)
+      this.toastService.info(`${participantName} left the board`, 3000);
     });
 
     // Feature #108: Handle element creation from other participants
@@ -1372,6 +1504,102 @@ export class CanvasComponent implements OnInit, OnDestroy, AfterViewInit {
    */
   isCursorStale(cursor: RemoteCursor): boolean {
     return Date.now() - cursor.lastUpdate > this.cursorStaleTimeout;
+  }
+
+  // ========== Participant Avatars (Feature #113) ==========
+  /**
+   * Get all participants including self (Feature #113)
+   * Per spec: Participant avatars in toolbar (max 5 shown + overflow count)
+   */
+  private getAllParticipants(): Participant[] {
+    const participants: Participant[] = [];
+
+    // Add self first (always displayed)
+    const selfName = this.getSelfDisplayName();
+    participants.push({
+      id: 'self',
+      name: selfName,
+      color: this.selfCursorColor,
+      initials: this.getInitials(selfName),
+      isSelf: true
+    });
+
+    // Add remote participants from remote cursors
+    this.remoteCursors.forEach((cursor, connectionId) => {
+      participants.push({
+        id: connectionId,
+        name: cursor.name || 'Anonymous',
+        color: cursor.color,
+        initials: this.getInitials(cursor.name || 'Anonymous'),
+        isSelf: false
+      });
+    });
+
+    return participants;
+  }
+
+  /**
+   * Get display name for current user (Feature #113)
+   */
+  private getSelfDisplayName(): string {
+    // For guests, use the guest session name
+    if (this.isGuest && this.guestSession) {
+      return this.guestSession.guestName;
+    }
+
+    // For authenticated users, try to get from ABP config state
+    const currentUser = this.configState.getOne('currentUser');
+    if (currentUser) {
+      // Try display name first, then username, then email
+      return (currentUser as any).name ||
+             (currentUser as any).userName ||
+             (currentUser as any).email?.split('@')[0] ||
+             'You';
+    }
+
+    return 'You';
+  }
+
+  /**
+   * Get initials from a name (1-2 characters) (Feature #113)
+   */
+  private getInitials(name: string): string {
+    if (!name || name.length === 0) {
+      return '?';
+    }
+
+    // Split by spaces and get first letter of each word
+    const words = name.trim().split(/\s+/);
+    if (words.length >= 2) {
+      return (words[0][0] + words[1][0]).toUpperCase();
+    }
+
+    // Single word - use first 1-2 characters
+    return name.substring(0, Math.min(2, name.length)).toUpperCase();
+  }
+
+  /**
+   * Get participants to display (max 5) (Feature #113)
+   * Per spec: max 5 shown + overflow count
+   */
+  getDisplayedParticipants(): Participant[] {
+    const all = this.getAllParticipants();
+    return all.slice(0, this.MAX_DISPLAYED_AVATARS);
+  }
+
+  /**
+   * Get count of participants not displayed (Feature #113)
+   */
+  getOverflowCount(): number {
+    const all = this.getAllParticipants();
+    return Math.max(0, all.length - this.MAX_DISPLAYED_AVATARS);
+  }
+
+  /**
+   * TrackBy function for participant ngFor (Feature #113)
+   */
+  trackParticipantById(index: number, participant: Participant): string {
+    return participant.id;
   }
 
   /**
