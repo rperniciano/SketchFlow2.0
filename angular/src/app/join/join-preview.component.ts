@@ -49,21 +49,24 @@ import { BoardService, BoardDto } from '../shared/services/board.service';
             type="text"
             id="guestName"
             class="form-input"
+            [class.input-error]="nameError"
             [(ngModel)]="guestName"
             placeholder="Your name"
             maxlength="100"
-            (keyup.enter)="joinBoard()"
+            (keyup.enter)="onJoinClick()"
+            (blur)="onNameBlur()"
+            (input)="onNameInput()"
             autofocus
           />
-          <p class="form-hint" *ngIf="guestName.length > 0 && guestName.length < 2">
-            Name must be at least 2 characters
+          <p class="form-error" *ngIf="nameError">
+            {{ nameError }}
           </p>
         </div>
 
         <button
           class="btn-primary join-btn"
-          (click)="joinBoard()"
-          [disabled]="!canJoin || isJoining"
+          (click)="onJoinClick()"
+          [disabled]="isJoining"
         >
           <span *ngIf="!isJoining">Join Board</span>
           <span *ngIf="isJoining">
@@ -259,6 +262,21 @@ import { BoardService, BoardDto } from '../shared/services/board.service';
       font-size: 0.75rem;
     }
 
+    .form-error {
+      margin: 0.5rem 0 0;
+      color: #ef4444;
+      font-size: 0.75rem;
+    }
+
+    .form-input.input-error {
+      border-color: #ef4444;
+    }
+
+    .form-input.input-error:focus {
+      border-color: #ef4444;
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+    }
+
     /* Buttons */
     .btn-primary {
       width: 100%;
@@ -356,14 +374,54 @@ export class JoinPreviewComponent implements OnInit {
   private router = inject(Router);
   private boardService = inject(BoardService);
 
+  // Cookie name for persistent guest identity (per spec: 30-day rolling expiry)
+  private readonly GUEST_ID_COOKIE = 'sketchflow_guest_id';
+  private readonly GUEST_ID_STORAGE = 'sketchflow_guest_id'; // Backup in localStorage
+  private readonly GUEST_NAMES_STORAGE = 'sketchflow_guest_names'; // Map of boardId -> guestName
+
   board: BoardDto | null = null;
   isLoading = true;
   isJoining = false;
   error: string | null = null;
   guestName = '';
+  nameError: string | null = null;
+  nameTouched = false;
+  persistentGuestId: string | null = null;
 
   get canJoin(): boolean {
     return this.guestName.trim().length >= 2;
+  }
+
+  validateName(): boolean {
+    const trimmedName = this.guestName.trim();
+    if (trimmedName.length === 0) {
+      this.nameError = 'Name is required';
+      return false;
+    } else if (trimmedName.length < 2) {
+      this.nameError = 'Name must be at least 2 characters';
+      return false;
+    }
+    this.nameError = null;
+    return true;
+  }
+
+  onNameBlur(): void {
+    this.nameTouched = true;
+    this.validateName();
+  }
+
+  onNameInput(): void {
+    // Only validate if already touched to avoid premature errors
+    if (this.nameTouched) {
+      this.validateName();
+    }
+  }
+
+  onJoinClick(): void {
+    this.nameTouched = true;
+    if (this.validateName()) {
+      this.joinBoard();
+    }
   }
 
   ngOnInit(): void {
