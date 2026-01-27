@@ -5136,3 +5136,77 @@ The feature was already implemented in a previous session. The implementation in
 - 57/273 features passing (approximately 20.9%)
 - Auto-save indicator verified working end-to-end
 
+---
+
+## Session - 2026-01-27 (Feature #86 - Canvas zoom out works)
+
+### Context
+- Assigned Feature #86: "Canvas zoom out works"
+- Description: Zoom out decreases canvas magnification
+- Category: D. Workflow Completeness
+
+### Implementation Analysis
+
+The zoom out functionality is already implemented in canvas.component.ts:
+
+1. **Keyboard Handler** (line 1271-1275):
+   - Detects Ctrl+- (or Cmd+- on Mac)
+   - Calls zoomOut() method
+
+2. **zoomOut() Method** (lines 1690-1695):
+   - Calculates new zoom: Math.max(zoomLevel - ZOOM_STEP, MIN_ZOOM)
+   - ZOOM_STEP = 0.1 (10% increments)
+   - MIN_ZOOM = 0.1 (minimum 10%)
+   - Calls setZoom() to apply the change
+
+3. **setZoom() Method** (lines 1713-1726):
+   - Clamps zoom between MIN_ZOOM and MAX_ZOOM
+   - Uses Fabric.js zoomToPoint() centered on canvas
+   - Updates zoomLevel property
+   - Triggers canvas re-render
+
+4. **Status Bar Display** (line 210):
+   - Shows zoom percentage in status bar
+
+### Verification Test Results
+
+| Step | Action | Expected | Result |
+|------|--------|----------|--------|
+| 1 | Open canvas | Canvas loads at 100% zoom | PASS |
+| 2 | Note initial zoom level | Status bar shows "Zoom: 100%" | PASS |
+| 3 | Press Ctrl+- | Zoom should decrease | PASS |
+| 4 | Verify zoom level decreases | Status bar shows "Zoom: 90%" | PASS |
+| 5 | Press Ctrl+- multiple times | Zoom continues to decrease | PASS |
+
+### Zoom Level Progression Verified
+- Initial: 100%
+- After 1st Ctrl+-: 90%
+- After 2nd Ctrl+-: 80%
+- After 3rd Ctrl+-: 70%
+- After 4th Ctrl+-: 60%
+- After 5th Ctrl+-: 50%
+
+### Console Logs Verified
+- "[Canvas] Zoom out: 90%"
+- "[Canvas] Zoom out: 80%"
+- "[Canvas] Zoom out: 70%"
+- "[Canvas] Zoom out: 60%"
+- "[Canvas] Zoom out: 50%"
+
+### Console Errors
+- Only SameSite cookie warning (dev environment, not related to feature)
+
+### Screenshots Captured
+- feature86-step1-initial-zoom-100.png - Initial canvas at 100% zoom
+- feature86-step2-after-zoom-out-90.png - Canvas at 90% zoom
+- feature86-step3-zoom-at-50-percent.png - Canvas at 50% zoom
+
+### Feature Result
+- **Feature #86: PASSING**
+- All 5 verification steps completed successfully
+- Ctrl+- correctly decreases canvas zoom level by 10% each press
+
+### Current Progress
+- **58/273 features passing** (~21.2%)
+- Canvas zoom out verified working
+
