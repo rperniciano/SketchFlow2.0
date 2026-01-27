@@ -1,67 +1,200 @@
-﻿# SketchFlow
+# SketchFlow
 
-## About this solution
+> Transform sketches into production-ready React code with real-time collaboration
 
-This is a layered startup solution based on [Domain Driven Design (DDD)](https://abp.io/docs/latest/framework/architecture/domain-driven-design) practises. All the fundamental ABP modules are already installed. Check the [Application Startup Template](https://abp.io/docs/latest/solution-templates/layered-web-application) documentation for more info.
+## Overview
 
-### Pre-requirements
+SketchFlow is a real-time collaborative whiteboard application that bridges the gap between design ideation and code implementation. Users can draw wireframes, UI sketches, and diagrams together in real-time, then select any hand-drawn sketch and click "Generate Component" to transform it into production-ready React + Tailwind code using AI.
 
-* [.NET10.0+ SDK](https://dotnet.microsoft.com/download/dotnet)
-* [Node v18 or 20](https://nodejs.org/en)
+### Key Features
 
-### Configurations
+- **Real-time Collaboration**: Multiple users can draw and collaborate on the same canvas simultaneously with live cursor sync
+- **AI Code Generation**: Select any sketch and generate production-ready React + Tailwind components using GPT-4 Vision + Claude
+- **Infinite Canvas**: Smooth 60fps rendering with zoom, pan, and viewport culling for optimal performance
+- **Drawing Tools**: Pen, Rectangle, Circle, and Text tools with 8 colors and 3 stroke thicknesses
+- **Share Links**: Generate shareable links for guests to join boards without registration
+- **Dark Theme**: Elite design system with glassmorphism effects and cinematic animations
 
-The solution comes with a default configuration that works out of the box. However, you may consider to change the following configuration before running your solution:
+### Target Audience
 
-* Check the `ConnectionStrings` in `appsettings.json` files under the `SketchFlow.HttpApi.Host` and `SketchFlow.DbMigrator` projects and change it if you need.
+Cross-functional product teams of 3-10 people (developers, designers, PMs) at startups and scale-ups where speed and iteration matter.
 
-### Before running the application
+## Technology Stack
 
-* Run `abp install-libs` command on your solution folder to install client-side package dependencies. This step is automatically done when you create a new solution, if you didn't especially disabled it. However, you should run it yourself if you have first cloned this solution from your source control, or added a new client-side package dependency to your solution.
-* Run `SketchFlow.DbMigrator` to create the initial database. This step is also automatically done when you create a new solution, if you didn't especially disabled it. This should be done in the first run. It is also needed if a new database migration is added to the solution later.
+### Frontend
+- **Angular 17+** (standalone components)
+- **Fabric.js** for canvas rendering
+- **SignalR** for real-time communication
+- Custom "Elite" dark theme with glassmorphism
 
-#### Generating a Signing Certificate
+### Backend
+- **ABP.io with .NET 10** (DDD, CQRS patterns)
+- **SQL Server** (single-tenant)
+- **SignalR** for real-time features
+- **MassTransit + RabbitMQ** for messaging
+- **ABP Identity + Google OAuth** for authentication
 
-In the production environment, you need to use a production signing certificate. ABP Framework sets up signing and encryption certificates in your application and expects an `openiddict.pfx` file in your application.
+### AI Services
+- **GPT-4 Vision API** for sketch analysis
+- **Claude Code CLI** for React + Tailwind code generation
 
-To generate a signing certificate, you can use the following command:
+## Prerequisites
+
+- [.NET 10.0+ SDK](https://dotnet.microsoft.com/download/dotnet)
+- [Node.js 20+](https://nodejs.org/en)
+- SQL Server (local or Docker)
+- RabbitMQ (Docker recommended)
+- OpenAI API key (GPT-4 Vision)
+- Anthropic API key (Claude Code CLI)
+
+## Quick Start
+
+The easiest way to get started is using the init script:
 
 ```bash
-dotnet dev-certs https -v -ep openiddict.pfx -p 7cd49d9b-654d-4e26-b3a9-80c41bbbbb2f
+# Make the script executable (first time only)
+chmod +x init.sh
+
+# Run the setup script
+./init.sh
 ```
 
-> `7cd49d9b-654d-4e26-b3a9-80c41bbbbb2f` is the password of the certificate, you can change it to any password you want.
+This will:
+1. Check prerequisites
+2. Set up Docker containers for SQL Server and RabbitMQ (if Docker available)
+3. Restore NuGet packages
+4. Run database migrations
+5. Install frontend dependencies
 
-It is recommended to use **two** RSA certificates, distinct from the certificate(s) used for HTTPS: one for encryption, one for signing.
+### Manual Setup
 
-For more information, please refer to: [OpenIddict Certificate Configuration](https://documentation.openiddict.com/configuration/encryption-and-signing-credentials.html#registering-a-certificate-recommended-for-production-ready-scenarios)
+If you prefer manual setup:
 
-> Also, see the [Configuring OpenIddict](https://abp.io/docs/latest/Deployment/Configuring-OpenIddict#production-environment) documentation for more information.
+1. **Install ABP CLI** (optional but recommended):
+   ```bash
+   dotnet tool install -g Volo.Abp.Studio.Cli
+   ```
 
-### Solution structure
+2. **Restore dependencies**:
+   ```bash
+   dotnet restore
+   abp install-libs  # Optional: install client-side ABP libraries
+   ```
 
-This is a layered monolith application that consists of the following applications:
+3. **Generate development certificate**:
+   ```bash
+   cd src/SketchFlow.HttpApi.Host
+   dotnet dev-certs https -v -ep openiddict.pfx -p 7cd49d9b-654d-4e26-b3a9-80c41bbbbb2f
+   ```
 
-* `SketchFlow.DbMigrator`: A console application which applies the migrations and also seeds the initial data. It is useful on development as well as on production environment.
-* `SketchFlow.HttpApi.Host`: ASP.NET Core API application that is used to expose the APIs to the clients.
-* `angular`: Angular application.
+4. **Run database migrations**:
+   ```bash
+   cd src/SketchFlow.DbMigrator
+   dotnet run
+   ```
 
+5. **Install frontend dependencies**:
+   ```bash
+   cd angular
+   yarn install  # or npm install
+   ```
 
-## Deploying the application
+## Running the Application
 
-Deploying an ABP application follows the same process as deploying any .NET or ASP.NET Core application. However, there are important considerations to keep in mind. For detailed guidance, refer to ABP's [deployment documentation](https://abp.io/docs/latest/Deployment/Index).
+### Start Backend
 
-### Additional resources
+```bash
+cd src/SketchFlow.HttpApi.Host
+dotnet run
+```
 
+The API will be available at: `https://localhost:44325`
+Swagger UI: `https://localhost:44325/swagger`
 
-#### Internal Resources
+### Start Frontend
 
-You can find detailed setup and configuration guide(s) for your solution below:
+```bash
+cd angular
+yarn start  # or npm start
+```
 
-* [Angular](./angular/README.md)
+The Angular app will be available at: `http://localhost:4200`
 
-#### External Resources
-You can see the following resources to learn more about your solution and the ABP Framework:
+## Configuration
 
-* [Web Application Development Tutorial](https://abp.io/docs/latest/tutorials/book-store/part-1)
-* [Application Startup Template](https://abp.io/docs/latest/startup-templates/application/index)
+### Connection Strings
+
+Update `appsettings.json` in `SketchFlow.HttpApi.Host` and `SketchFlow.DbMigrator`:
+
+```json
+{
+  "ConnectionStrings": {
+    "Default": "Server=localhost;Database=SketchFlow;Trusted_Connection=True;TrustServerCertificate=true"
+  }
+}
+```
+
+### API Keys
+
+Add to `appsettings.json` or environment variables:
+
+```json
+{
+  "AIServices": {
+    "OpenAI": {
+      "ApiKey": "your-openai-api-key"
+    },
+    "Anthropic": {
+      "ApiKey": "your-anthropic-api-key"
+    }
+  }
+}
+```
+
+## Solution Structure
+
+```
+SketchFlow2.0/
+├── angular/                    # Angular 17+ frontend
+│   ├── src/
+│   │   ├── app/               # Application components
+│   │   └── environments/      # Environment configs
+│   └── ...
+├── src/
+│   ├── SketchFlow.Application/           # Application services
+│   ├── SketchFlow.Application.Contracts/ # DTOs, interfaces
+│   ├── SketchFlow.Domain/                # Domain entities, services
+│   ├── SketchFlow.Domain.Shared/         # Shared enums, constants
+│   ├── SketchFlow.EntityFrameworkCore/   # EF Core, repositories
+│   ├── SketchFlow.HttpApi/               # API controllers
+│   ├── SketchFlow.HttpApi.Host/          # API host, SignalR hubs
+│   └── SketchFlow.DbMigrator/            # Database migrations
+├── test/                       # Unit and integration tests
+├── prompts/                    # AI agent prompts and specs
+├── init.sh                     # Development setup script
+└── features.db                 # Feature tracking database
+```
+
+## Feature Tracking
+
+Features are tracked in `features.db` (SQLite). The project includes 273 comprehensive features covering:
+
+- Security & Access Control
+- Navigation Integrity
+- Real Data Verification
+- Workflow Completeness
+- Error Handling
+- UI-Backend Integration
+- State & Persistence
+- And more...
+
+## License
+
+Proprietary - All rights reserved
+
+## Additional Resources
+
+- [ABP Framework Documentation](https://abp.io/docs/latest)
+- [Angular Documentation](https://angular.dev)
+- [Fabric.js Documentation](http://fabricjs.com/docs/)
+- [SignalR Documentation](https://docs.microsoft.com/aspnet/core/signalr/)
