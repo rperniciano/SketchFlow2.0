@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SketchFlow.Localization;
 using SketchFlow.MultiTenancy;
+using SketchFlow.Identity;
 using System;
 using Volo.Abp.Localization;
 using Volo.Abp.Modularity;
@@ -38,6 +39,17 @@ namespace SketchFlow;
     )]
 public class SketchFlowDomainModule : AbpModule
 {
+    public override void PreConfigureServices(ServiceConfigurationContext context)
+    {
+        // Register the custom password reset token provider with Identity
+        // This provider has a 1-hour expiry as per app_spec.txt
+        PreConfigure<IdentityBuilder>(builder =>
+        {
+            builder.AddTokenProvider<PasswordResetTokenProvider<Volo.Abp.Identity.IdentityUser>>(
+                PasswordResetTokenProviderOptions.ProviderName);
+        });
+    }
+
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         Configure<AbpMultiTenancyOptions>(options =>
@@ -61,13 +73,24 @@ public class SketchFlowDomainModule : AbpModule
 
             // User settings
             options.User.RequireUniqueEmail = true;
+
+            // Use custom password reset token provider with 1-hour expiry
+            // This overrides the default provider (which has 24-hour expiry)
+            options.Tokens.PasswordResetTokenProvider = PasswordResetTokenProviderOptions.ProviderName;
         });
 
-        // Configure email verification token to expire after 24 hours
+        // Configure default token provider for email verification (24 hours)
         // This matches the app_spec.txt requirement: "24h link expiry"
         context.Services.Configure<DataProtectionTokenProviderOptions>(options =>
         {
             options.TokenLifespan = TimeSpan.FromHours(24);
+        });
+
+        // Configure password reset token provider (1 hour expiry)
+        // This matches the app_spec.txt requirement: "Password reset via email (1h link expiry, single-use)"
+        context.Services.Configure<PasswordResetTokenProviderOptions>(options =>
+        {
+            options.TokenLifespan = TimeSpan.FromHours(1);
         });
 
 #if DEBUG
