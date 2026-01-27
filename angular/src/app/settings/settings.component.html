@@ -105,20 +105,41 @@
             <input
               type="email"
               id="email"
-              [value]="email"
-              readonly
-              class="form-input readonly"
+              [(ngModel)]="email"
+              placeholder="your@email.com"
+              class="form-input"
             />
-            <span class="badge" [class.verified]="emailConfirmed" [class.unverified]="!emailConfirmed">
-              <i class="bi" [class.bi-check-circle]="emailConfirmed" [class.bi-x-circle]="!emailConfirmed"></i>
-              {{ emailConfirmed ? 'Verified' : 'Unverified' }}
+            <span class="badge" [class.verified]="emailConfirmed && !emailChanged" [class.unverified]="!emailConfirmed || emailChanged">
+              <i class="bi" [class.bi-check-circle]="emailConfirmed && !emailChanged" [class.bi-x-circle]="!emailConfirmed || emailChanged"></i>
+              {{ emailConfirmed && !emailChanged ? 'Verified' : 'Unverified' }}
             </span>
           </div>
-          <p *ngIf="!emailConfirmed" class="field-help warning">
+          <p *ngIf="emailChanged" class="field-help warning">
+            <i class="bi bi-exclamation-triangle"></i>
+            Changing your email will require re-verification. Your old email will continue to work until you verify the new one.
+          </p>
+          <p *ngIf="!emailConfirmed && !emailChanged" class="field-help warning">
             <i class="bi bi-info-circle"></i>
             Your email is not verified. Some features may be limited.
             <button class="link-button" (click)="resendVerificationEmail()">Resend verification email</button>
           </p>
+        </div>
+
+        <!-- Save Button and Feedback -->
+        <div class="form-actions">
+          <div *ngIf="saveMessage" class="save-message" [class.success]="saveMessageType === 'success'" [class.error]="saveMessageType === 'error'">
+            <i class="bi" [class.bi-check-circle]="saveMessageType === 'success'" [class.bi-exclamation-circle]="saveMessageType === 'error'"></i>
+            {{ saveMessage }}
+          </div>
+          <button
+            class="btn-primary"
+            [disabled]="isSaving || !hasChanges"
+            (click)="saveProfile()"
+          >
+            <i *ngIf="isSaving" class="bi bi-arrow-clockwise spinning"></i>
+            <i *ngIf="!isSaving" class="bi bi-check"></i>
+            {{ isSaving ? 'Saving...' : 'Save Changes' }}
+          </button>
         </div>
       </div>
 
@@ -183,6 +204,23 @@
             </button>
           </div>
         </div>
+
+        <!-- Save Button and Feedback -->
+        <div class="form-actions">
+          <div *ngIf="saveMessage" class="save-message" [class.success]="saveMessageType === 'success'" [class.error]="saveMessageType === 'error'">
+            <i class="bi" [class.bi-check-circle]="saveMessageType === 'success'" [class.bi-exclamation-circle]="saveMessageType === 'error'"></i>
+            {{ saveMessage }}
+          </div>
+          <button
+            class="btn-primary"
+            [disabled]="isSaving || !hasChanges"
+            (click)="saveProfile()"
+          >
+            <i *ngIf="isSaving" class="bi bi-arrow-clockwise spinning"></i>
+            <i *ngIf="!isSaving" class="bi bi-check"></i>
+            {{ isSaving ? 'Saving...' : 'Save Changes' }}
+          </button>
+        </div>
       </div>
 
       <!-- Security Tab -->
@@ -193,14 +231,102 @@
         <div class="security-section">
           <h3>Password</h3>
           <p>Change your account password. You'll need to enter your current password.</p>
-          <button class="btn-secondary" disabled>Change Password</button>
-          <p class="field-help muted">Password change functionality coming soon.</p>
+
+          <!-- Change Password Button (when form is hidden) -->
+          <button *ngIf="!showPasswordForm" class="btn-secondary" (click)="togglePasswordForm()">
+            <i class="bi bi-key"></i>
+            Change Password
+          </button>
+
+          <!-- Password Change Form -->
+          <div *ngIf="showPasswordForm" class="password-form">
+            <div class="form-group">
+              <label for="currentPassword">Current Password</label>
+              <input
+                type="password"
+                id="currentPassword"
+                [(ngModel)]="currentPassword"
+                placeholder="Enter your current password"
+                class="form-input"
+                autocomplete="current-password"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="newPassword">New Password</label>
+              <input
+                type="password"
+                id="newPassword"
+                [(ngModel)]="newPassword"
+                placeholder="Enter new password (min 8 characters)"
+                class="form-input"
+                autocomplete="new-password"
+              />
+              <!-- Password Strength Indicator -->
+              <div *ngIf="newPassword" class="password-strength">
+                <div class="strength-bar">
+                  <div
+                    class="strength-fill"
+                    [class.weak]="passwordStrength === 'weak'"
+                    [class.fair]="passwordStrength === 'fair'"
+                    [class.good]="passwordStrength === 'good'"
+                    [class.strong]="passwordStrength === 'strong'"
+                  ></div>
+                </div>
+                <span class="strength-label" [class]="passwordStrength">
+                  {{ passwordStrength | titlecase }}
+                </span>
+              </div>
+              <p *ngIf="newPassword.length > 0 && newPassword.length < 8" class="field-help warning">
+                <i class="bi bi-exclamation-triangle"></i>
+                Password must be at least 8 characters
+              </p>
+            </div>
+
+            <div class="form-group">
+              <label for="confirmPassword">Confirm New Password</label>
+              <input
+                type="password"
+                id="confirmPassword"
+                [(ngModel)]="confirmPassword"
+                placeholder="Confirm your new password"
+                class="form-input"
+                autocomplete="new-password"
+              />
+              <p *ngIf="confirmPassword && confirmPassword !== newPassword" class="field-help warning">
+                <i class="bi bi-exclamation-triangle"></i>
+                Passwords do not match
+              </p>
+            </div>
+
+            <!-- Password Change Feedback -->
+            <div *ngIf="passwordMessage" class="save-message" [class.success]="passwordMessageType === 'success'" [class.error]="passwordMessageType === 'error'">
+              <i class="bi" [class.bi-check-circle]="passwordMessageType === 'success'" [class.bi-exclamation-circle]="passwordMessageType === 'error'"></i>
+              {{ passwordMessage }}
+            </div>
+
+            <div class="password-form-actions">
+              <button class="btn-secondary" (click)="togglePasswordForm()">Cancel</button>
+              <button
+                class="btn-primary"
+                [disabled]="!canSubmitPassword"
+                (click)="changePassword()"
+              >
+                <i *ngIf="isChangingPassword" class="bi bi-arrow-clockwise spinning"></i>
+                <i *ngIf="!isChangingPassword" class="bi bi-check"></i>
+                {{ isChangingPassword ? 'Changing...' : 'Change Password' }}
+              </button>
+            </div>
+          </div>
         </div>
 
         <div class="security-section">
           <h3>Sessions</h3>
-          <p>You are currently logged in. You can log out from all devices if needed.</p>
-          <button class="btn-secondary" disabled>Log Out All Devices</button>
+          <p>You are currently logged in. You can log out of this session.</p>
+          <button class="btn-secondary" (click)="logout()">
+            <i class="bi bi-box-arrow-right"></i>
+            Log Out
+          </button>
         </div>
       </div>
 

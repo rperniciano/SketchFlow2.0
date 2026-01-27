@@ -19,9 +19,16 @@ export interface UserProfileDto {
 export interface UpdateUserProfileInput {
   name: string;
   surname: string;
+  email?: string;
   cursorColor: string;
   defaultStrokeColor: string;
   defaultStrokeThickness: number;
+}
+
+export interface UpdateUserProfileResultDto {
+  profile: UserProfileDto;
+  emailChanged: boolean;
+  message?: string;
 }
 
 @Injectable({
@@ -44,10 +51,11 @@ export class UserProfileService {
 
   /**
    * Update the current user's profile information
+   * ABP route: PUT /api/app/user-profile/user-profile
    */
-  updateUserProfile(input: UpdateUserProfileInput): Observable<UserProfileDto> {
-    return this.http.put<UserProfileDto>(
-      `${this.apiUrl}/api/app/user-profile`,
+  updateUserProfile(input: UpdateUserProfileInput): Observable<UpdateUserProfileResultDto> {
+    return this.http.put<UpdateUserProfileResultDto>(
+      `${this.apiUrl}/api/app/user-profile/user-profile`,
       input
     );
   }
@@ -61,4 +69,25 @@ export class UserProfileService {
       {}
     );
   }
+
+  /**
+   * Change the current user's password
+   */
+  changePassword(input: ChangePasswordInput): Observable<ChangePasswordResult> {
+    return this.http.post<ChangePasswordResult>(
+      `${this.apiUrl}/api/app/user-profile/change-password`,
+      input
+    );
+  }
+}
+
+export interface ChangePasswordInput {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface ChangePasswordResult {
+  success: boolean;
+  message: string;
 }

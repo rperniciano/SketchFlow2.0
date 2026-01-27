@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
@@ -61,7 +62,7 @@ public class UserProfileAppService : SketchFlowAppService, IUserProfileAppServic
     /// <summary>
     /// Updates the current authenticated user's profile information.
     /// </summary>
-    public async Task<UserProfileDto> UpdateUserProfileAsync(UpdateUserProfileInput input)
+    public async Task<UpdateUserProfileResultDto> UpdateUserProfileAsync(UpdateUserProfileInput input)
     {
         var userId = CurrentUser.Id;
         if (userId == null)
@@ -73,6 +74,52 @@ public class UserProfileAppService : SketchFlowAppService, IUserProfileAppServic
         if (user == null)
         {
             throw new UserFriendlyException("User not found.");
+        }
+
+        // Track if email was changed
+        var emailChanged = false;
+        var oldEmail = user.Email;
+
+        // Check if email is being changed
+        if (!string.IsNullOrWhiteSpace(input.Email) &&
+            !string.Equals(user.Email, input.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            // Validate email format
+            if (!IsValidEmail(input.Email))
+            {
+                throw new UserFriendlyException("Invalid email format.");
+            }
+
+            // Check if email is already in use by another user
+            var existingUser = await _userManager.FindByEmailAsync(input.Email);
+            if (existingUser != null && existingUser.Id != user.Id)
+            {
+                throw new UserFriendlyException("This email is already in use by another account.");
+            }
+
+            // Update email and mark as unverified
+            var setEmailResult = await _userManager.SetEmailAsync(user, input.Email);
+            if (!setEmailResult.Succeeded)
+            {
+                var errors = string.Join(", ", setEmailResult.Errors.Select(e => e.Description));
+                throw new UserFriendlyException($"Failed to update email: {errors}");
+            }
+
+            // Set email as unverified
+            user.SetEmailConfirmed(false);
+            emailChanged = true;
+
+            // Generate email confirmation token and log it (development mode)
+            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            _logger.LogInformation(
+                "Email changed for user {UserId} from {OldEmail} to {NewEmail}. Verification token: {Token}",
+                user.Id, oldEmail, input.Email, token);
+
+            // Construct verification URL for development
+            var verificationUrl = $"http://localhost:4200/verify-email?userId={user.Id}&token={Uri.EscapeDataString(token)}";
+            _logger.LogInformation(
+                "Email verification link: {VerificationUrl}",
+                verificationUrl);
         }
 
         // Update basic properties
@@ -88,11 +135,11 @@ public class UserProfileAppService : SketchFlowAppService, IUserProfileAppServic
         await _userManager.UpdateAsync(user);
 
         _logger.LogInformation(
-            "User profile updated for user {UserId}: Name={Name}, Surname={Surname}, CursorColor={CursorColor}",
-            user.Id, input.Name, input.Surname, input.CursorColor);
+            "User profile updated for user {UserId}: Name={Name}, Surname={Surname}, CursorColor={CursorColor}, EmailChanged={EmailChanged}",
+            user.Id, input.Name, input.Surname, input.CursorColor, emailChanged);
 
-        // Return the updated profile
-        return new UserProfileDto
+        // Build result
+        var profile = new UserProfileDto
         {
             Id = user.Id,
             UserName = user.UserName,
@@ -105,6 +152,31 @@ public class UserProfileAppService : SketchFlowAppService, IUserProfileAppServic
             DefaultStrokeColor = input.DefaultStrokeColor,
             DefaultStrokeThickness = input.DefaultStrokeThickness
         };
+
+        return new UpdateUserProfileResultDto
+        {
+            Profile = profile,
+            EmailChanged = emailChanged,
+            Message = emailChanged
+                ? "Your email has been updated. Please verify your new email address. Your old email will continue to work until the new one is verified."
+                : null
+        };
+    }
+
+    /// <summary>
+    /// Validates email format using basic regex.
+    /// </summary>
+    private static bool IsValidEmail(string email)
+    {
+        try
+        {
+            var addr = new System.Net.Mail.MailAddress(email);
+            return addr.Address == email;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -149,6 +221,120 @@ public class UserProfileAppService : SketchFlowAppService, IUserProfileAppServic
         {
             Success = true,
             Message = "Verification email sent. Please check your inbox."
+        };
+    }
+
+    /// <summary>
+    /// Changes the current user's password.
+    /// </summary>
+    public async Task<ChangePasswordResultDto> ChangePasswordAsync(ChangePasswordInput input)
+    {
+        var userId = CurrentUser.Id;
+        if (userId == null)
+        {
+            return new ChangePasswordResultDto
+            {
+                Success = false,
+                Message = "User is not authenticated."
+            };
+        }
+
+        // Validate input
+        if (string.IsNullOrWhiteSpace(input.CurrentPassword))
+        {
+            return new ChangePasswordResultDto
+            {
+                Success = false,
+                Message = "Current password is required."
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(input.NewPassword))
+        {
+            return new ChangePasswordResultDto
+            {
+                Success = false,
+                Message = "New password is required."
+            };
+        }
+
+        if (input.NewPassword != input.ConfirmPassword)
+        {
+            return new ChangePasswordResultDto
+            {
+                Success = false,
+                Message = "New password and confirmation do not match."
+            };
+        }
+
+        // Validate password length (8-128 characters as per spec)
+        if (input.NewPassword.Length < 8)
+        {
+            return new ChangePasswordResultDto
+            {
+                Success = false,
+                Message = "Password must be at least 8 characters long."
+            };
+        }
+
+        if (input.NewPassword.Length > 128)
+        {
+            return new ChangePasswordResultDto
+            {
+                Success = false,
+                Message = "Password cannot exceed 128 characters."
+            };
+        }
+
+        var user = await _userManager.GetByIdAsync(userId.Value);
+        if (user == null)
+        {
+            return new ChangePasswordResultDto
+            {
+                Success = false,
+                Message = "User not found."
+            };
+        }
+
+        // Verify current password
+        var isCurrentPasswordValid = await _userManager.CheckPasswordAsync(user, input.CurrentPassword);
+        if (!isCurrentPasswordValid)
+        {
+            _logger.LogWarning(
+                "Password change failed for user {UserId}: incorrect current password",
+                userId);
+
+            return new ChangePasswordResultDto
+            {
+                Success = false,
+                Message = "Current password is incorrect."
+            };
+        }
+
+        // Change the password
+        var changeResult = await _userManager.ChangePasswordAsync(user, input.CurrentPassword, input.NewPassword);
+        if (!changeResult.Succeeded)
+        {
+            var errors = string.Join(", ", changeResult.Errors.Select(e => e.Description));
+            _logger.LogWarning(
+                "Password change failed for user {UserId}: {Errors}",
+                userId, errors);
+
+            return new ChangePasswordResultDto
+            {
+                Success = false,
+                Message = $"Failed to change password: {errors}"
+            };
+        }
+
+        _logger.LogInformation(
+            "Password changed successfully for user {UserId}",
+            userId);
+
+        return new ChangePasswordResultDto
+        {
+            Success = true,
+            Message = "Your password has been changed successfully."
         };
     }
 }
