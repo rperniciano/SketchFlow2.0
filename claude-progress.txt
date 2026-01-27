@@ -2890,3 +2890,74 @@ After browser refresh, the error was gone and the app worked correctly.
 - Browser automation working
 - All services operational
 
+
+---
+
+## Session - 2026-01-27 (Feature #55 - Share link allows guest access)
+
+### Context
+- Assigned Feature #55: "Share link allows guest access"
+- Description: Non-authenticated users can access board via share link
+- Category: A. Security & Access Control
+
+### What Was Accomplished
+
+1. **Created JoinPreviewComponent** (angular/src/app/join/join-preview.component.ts):
+   - Beautiful glassmorphism card design matching app theme
+   - Board name and description display
+   - Guest name input field with validation (min 2 characters)
+   - Join Board button (disabled until valid name entered)
+   - Loading and error states
+   - Guest notice with sign-in prompt
+
+2. **Added Guest-Accessible Routes** (angular/src/app/app.routes.ts):
+   - /join/:shareToken - Join preview page (no authGuard)
+   - /canvas/:id - Removed authGuard to allow guest access
+
+3. **Updated CanvasComponent for Guest Support**:
+   - Detects guest mode via ?guest=true query param
+   - Loads guest session from localStorage
+   - Displays guest badge with name
+   - Shows "Leave Board" instead of "Back to Dashboard"
+   - Uses share token API (anonymous) to load board for guests
+
+4. **Fixed BoardService API endpoint**:
+   - Changed getByShareToken from path parameter to query parameter format
+   - Endpoint: /api/app/board/by-share-token?shareToken=TOKEN
+
+### Feature #55 Verification Checklist
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Create board and get share link | Board created with share token | PASS |
+| 2. Open incognito window | Fresh browser session | PASS |
+| 3. Navigate to share link | Join preview displays | PASS |
+| 4. Verify join preview page displays | Board name, input visible | PASS |
+| 5. Enter guest name | Input accepts name | PASS |
+| 6. Click join | Navigation to canvas | PASS |
+| 7. Verify access to board canvas | Canvas loads with guest info | PASS |
+
+### Console Errors
+- None (no JavaScript errors detected)
+
+### Screenshots Captured
+- feature55-join-preview-page.png - Join preview with board info and name input
+- feature55-guest-canvas-access.png - Canvas page with guest badge "TestGuest55"
+
+### Git Commit
+- Commit ceba04e: "feat: implement guest access via share link - Feature #55"
+
+### Feature Result
+- **Feature #55: PASSING**
+- All verification steps completed successfully
+- Non-authenticated users can successfully access boards via share links
+
+### Current Progress
+- **27/273 features passing** (~9.9%)
+- Guest access via share link fully implemented and verified
+
+### Environment Status
+- Backend running on http://localhost:44329
+- Frontend running on http://localhost:4200
+- Browser automation working
+- All services operational
