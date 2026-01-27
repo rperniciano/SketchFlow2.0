@@ -2565,3 +2565,136 @@ The case-insensitive search was already implemented:
 - Browser automation working
 - All services operational
 
+---
+
+## Session - 2026-01-27 (Regression Testing Feature #43)
+
+### Context
+- Assigned Feature #43: Dashboard search filters boards by name
+- Description: Search input filters board list in real-time
+- Category: L. Search & Filter
+- Status: Previously PASSING - regression testing
+
+### Initial Issue Found
+When navigating to the dashboard, a Vite error overlay appeared showing:
+TS2345: Argument of type '{ id: string; name: string; lastModified: Date; participantCount: number; }'
+is not assignable to parameter of type 'Board'.
+Property 'shareToken' is missing in type but required in type 'Board'.
+Location: src/app/dashboard/dashboard.component.ts:141:28
+
+This was a type error in the optimistic board creation code that was missing the shareToken property.
+Feature was marked as FAILING initially.
+
+### Resolution
+Upon further investigation, the code at line 141-146 in dashboard.component.ts already had the fix:
+shareToken: board.shareToken was present. The error was from a cached/stale build.
+After browser refresh, the error was gone and the app worked correctly.
+
+### Verification Steps Performed
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Create boards Alpha, Beta, Gamma | Boards created | PASS |
+| 2. Navigate to dashboard | Dashboard loads | PASS |
+| 3. Type Alpha in search input | Search input shows Alpha | PASS |
+| 4. Verify only Alpha board is displayed | Only Alpha visible | PASS |
+| 5. Clear search | Search cleared | PASS |
+| 6. Verify all boards are displayed | All 4 boards visible | PASS |
+
+### Test Details
+- Logged in as admin user
+- Created 3 test boards: Alpha, Beta, Gamma (plus existing MyTestBoard)
+- Typed Alpha in search input
+- Verified only Alpha board was displayed (filter working)
+- Clicked Clear search button
+- Verified all 4 boards reappeared
+
+### Console Errors
+- None (no JavaScript runtime errors)
+
+### Screenshots Captured
+- feature43-error-overlay.png - Initial TypeScript error (cached/resolved)
+- feature43-search-alpha-filtered.png - Dashboard filtered to show only Alpha
+- feature43-search-cleared.png - Dashboard showing all boards after clearing search
+
+### Feature Result
+- **Feature #43: PASSING**
+- All verification steps completed successfully
+- Dashboard search filters boards by name correctly in real-time
+
+### Current Progress
+- **24/273 features passing** (~8.8%)
+- Search filtering functionality verified and working correctly
+
+---
+
+## Session - 2026-01-27 (Feature #51 - Permanent Delete from Trash)
+
+### Context
+- Assigned Feature #51: User can permanently delete board from trash
+- Category: D. Workflow Completeness
+
+### What Was Accomplished
+1. Found and fixed API bug: Frontend was using DELETE but ABP expects POST
+2. Changed board.service.ts permanentDelete() to use POST method
+3. Verified complete flow: soft delete -> trash -> permanent delete -> verify gone
+
+### Verification Checklist
+- Soft delete board: PASS
+- Navigate to trash: PASS
+- Click permanent delete: PASS
+- Confirm deletion: PASS (API returns 204)
+- Board removed from trash: PASS
+- Board not in main list: PASS
+
+### Code Changes
+- angular/src/app/shared/services/board.service.ts: POST instead of DELETE
+
+### Feature Result
+- **Feature #51: PASSING**
+- 27/273 features passing (~9.9%)
+
+---
+
+## Session - 2026-01-27 (Regression Testing Feature #2)
+
+### Context
+- Assigned Feature #2: Landing page renders correctly
+- Description: The landing page displays all expected sections with proper styling
+- Category: B. Navigation Integrity
+- Status: Previously PASSING - regression testing
+
+### Verification Steps Performed
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Navigate to root URL | Page loads | PASS |
+| 2. Hero section with tagline and CTAs | Sketch It. Ship It. + buttons | PASS |
+| 3. Static illustration visible | Sketch-AI-Code visual | PASS |
+| 4. Features section with 3 cards | Collaborate, Generate, Ship | PASS |
+| 5. CTA section with registration prompt | Create Free Account button | PASS |
+| 6. Footer with links | Features, GitHub, Contact, Privacy | PASS |
+| 7. Dark theme with glassmorphism | Dark styling with glass effects | PASS |
+
+### Test Details
+- Navigated to http://localhost:4200
+- Captured full-page accessibility snapshot
+- Verified all structural elements present
+- Captured full-page screenshot for visual verification
+- Confirmed dark theme with glassmorphism aesthetic applied
+
+### Console Errors
+- None
+
+### Screenshots Captured
+- feature2-landing-page.png - Full page screenshot of landing page
+
+### Feature Result
+- **Feature #2: PASSING**
+- All verification steps completed successfully
+- No regressions found - landing page renders correctly
+
+### Current Progress
+- **27/273 features passing** (~9.9%)
+- Landing page verified end-to-end
+
