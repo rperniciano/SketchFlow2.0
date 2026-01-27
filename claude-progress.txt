@@ -1854,3 +1854,131 @@ The case-insensitive search was already implemented in the dashboard component:
 - Board API functional
 - All services operational
 
+---
+
+## Session 20 - 2026-01-27 (Feature #43 - Dashboard search filters boards by name)
+
+### Context
+- Assigned Feature #43: "Dashboard search filters boards by name"
+- Description: Search input filters board list in real-time
+- Category: L. Search & Filter
+
+### What Was Accomplished
+
+1. **Verified Environment**:
+   - Backend running on http://localhost:44326
+   - Frontend running on http://localhost:4200
+   - Both servers operational (HTTP 200)
+
+2. **Checked Existing Implementation**:
+   - Dashboard component has search input with `[(ngModel)]="searchQuery"`
+   - `filteredBoards` getter filters boards by name in real-time
+   - Backend supports `filter` parameter in GetListAsync for server-side search
+   - Frontend uses client-side filtering (loads all boards, filters locally)
+
+3. **Created Test Data**:
+   - Registered new test user: `search_test_user43`
+   - Created 3 test boards: "Alpha", "Beta", "Gamma"
+
+4. **Verified Search Functionality**:
+   - All 3 boards displayed in dashboard (count: "My Boards 3")
+   - Typed "Alpha" in search input
+   - Only "Alpha" board displayed (Beta and Gamma hidden)
+   - Clicked clear button (X)
+   - All 3 boards restored
+
+### Feature #43 Verification Checklist
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Create boards 'Alpha', 'Beta', 'Gamma' | Boards created | PASS |
+| 2. Navigate to dashboard | All boards visible | PASS - 3 boards shown |
+| 3. Type 'Alpha' in search input | Filter applied | PASS |
+| 4. Verify only 'Alpha' board is displayed | Single match | PASS - Only Alpha visible |
+| 5. Clear search | Filter cleared | PASS - Clicked X button |
+| 6. Verify all boards are displayed | All boards restored | PASS - 3 boards shown |
+
+### Console Errors
+- None (no JavaScript runtime errors)
+
+### Screenshots Captured
+- feature43-landing-page.png - Initial landing page
+- feature43-dashboard-empty.png - Dashboard empty state before creating boards
+- feature43-all-boards.png - Dashboard with all 3 boards (Alpha, Beta, Gamma)
+- feature43-search-alpha.png - Search filtering showing only "Alpha"
+- feature43-search-cleared.png - All boards restored after clearing search
+
+### Technical Details
+- Search implementation: Client-side filtering using `filteredBoards` getter
+- Filter logic: `board.name.toLowerCase().includes(query.toLowerCase())`
+- Real-time filtering: Uses Angular's `[(ngModel)]` two-way binding
+- Clear button appears when search query is not empty
+
+### Feature Result
+- **Feature #43: PASSING**
+- All verification steps completed successfully
+- Dashboard search filters boards by name in real-time
+
+### Current Progress
+- **16/273 features passing** (~5.9%)
+- Dashboard search filtering verified end-to-end
+
+### Environment Status
+- Backend running on http://localhost:44326
+- Frontend running on http://localhost:4200
+- Browser automation working
+- All services operational
+
+---
+
+## Session 21 - 2026-01-27 (Feature #44 - Dashboard search is case-insensitive)
+
+### Context
+- Assigned Feature #44: "Dashboard search is case-insensitive"
+- Description: Search works regardless of case
+- Category: L. Search & Filter
+
+### Implementation Notes
+The case-insensitive search was already implemented:
+- Frontend: `dashboard.component.ts` lines 77-85 use `.toLowerCase()` for both search query and board name
+- Backend: `BoardAppService.cs` lines 30-34 use `.ToLowerInvariant()` for the filter
+
+### Verification Steps Completed
+
+| Step | Expected | Result |
+|------|----------|--------|
+| 1. Create board 'MyTestBoard' | Board created | PASS - Created via New Board prompt |
+| 2. Navigate to dashboard | Dashboard loads with board | PASS - Board visible |
+| 3. Type 'mytestboard' (lowercase) in search | Board should appear | PASS - "MyTestBoard" displayed |
+| 4. Verify 'MyTestBoard' is displayed | Board matches | PASS - Verified in snapshot |
+| 5. Clear and type 'MYTESTBOARD' (uppercase) | Board should appear | PASS - "MyTestBoard" displayed |
+| 6. Verify 'MyTestBoard' is displayed | Board matches | PASS - Verified in snapshot |
+
+### Console Errors
+- No JavaScript errors detected
+
+### Screenshots Captured
+- feature44-board-created.png - Dashboard with "MyTestBoard" visible
+- feature44-search-lowercase.png - Search with "mytestboard" showing "MyTestBoard"
+- feature44-search-uppercase.png - Search with "MYTESTBOARD" showing "MyTestBoard"
+
+### Technical Details
+- Frontend filter (Angular): `board.name.toLowerCase().includes(query.toLowerCase())`
+- Backend filter (C#): `b.Name.ToLower().Contains(filter.ToLowerInvariant())`
+- Both implement case-insensitive search correctly
+
+### Feature Result
+- **Feature #44: PASSING**
+- All verification steps completed successfully
+- Case-insensitive search works for both lowercase and uppercase queries
+
+### Current Progress
+- **17/273 features passing** (~6.2%)
+- Dashboard search case-insensitivity verified
+
+### Environment Status
+- Backend running on http://localhost:44326
+- Frontend running on http://localhost:4200
+- Browser automation working
+- All services operational
+
